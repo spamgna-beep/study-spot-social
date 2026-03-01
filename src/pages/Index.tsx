@@ -28,7 +28,7 @@ export default function Index() {
             <div className="w-12 h-12 rounded-2xl shadow-glow-primary flex items-center justify-center bg-cafe">
               <BookOpen size={24} className="text-primary-foreground" />
             </div>
-            <span className="text-sm font-medium text-muted-foreground">Study Spot</span>
+            <span className="text-lg font-sans font-semibold text-sidebar-foreground">Study Spot</span>
           </div>
 
           <h1 className="text-4xl font-extrabold tracking-tight leading-[1.1] mb-4">
