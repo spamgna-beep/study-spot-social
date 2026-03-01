@@ -25,7 +25,7 @@ export default function Index() {
           className="pt-16 pb-8">
 
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-primary shadow-glow-primary flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl shadow-glow-primary flex items-center justify-center bg-cafe">
               <BookOpen size={24} className="text-primary-foreground" />
             </div>
             <span className="text-sm font-medium text-muted-foreground">Study Spot</span>
@@ -34,7 +34,7 @@ export default function Index() {
           <h1 className="text-4xl font-extrabold tracking-tight leading-[1.1] mb-4">
             Find your people.
             <br />
-            <span className="text-gradient">Find your flow.</span>
+            <span className="text-gradient text-cafe">Find your flow.</span>
           </h1>
 
           <p className="text-base text-muted-foreground leading-relaxed max-w-sm">
