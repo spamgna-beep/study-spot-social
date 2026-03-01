@@ -28,6 +28,7 @@ const LOCATION_COLORS: Record<string, string> = {
   library: '#A8B79A',
   cafe: '#A68B6B',
   outdoor: '#7DB37D',
+  yourmumshouse: '#7DB37D',
 };
 
 export default function MapPage() {
