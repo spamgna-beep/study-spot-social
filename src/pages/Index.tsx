@@ -77,7 +77,7 @@ export default function Index() {
             className="glass-strong rounded-2xl p-4 flex items-start gap-4">
 
               <div className="">
-                <feature.icon size={20} className="text-foreground bg-cafe" />
+                <feature.icon size={20} className="text-foreground bg-primary" />
               </div>
               <div>
                 <h3 className="text-sm font-bold mb-0.5">{feature.title}</h3>
