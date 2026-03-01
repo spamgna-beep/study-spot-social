@@ -28,7 +28,7 @@ export default function Index() {
             <div className="w-12 h-12 rounded-2xl shadow-glow-primary flex items-center justify-center bg-cafe">
               <BookOpen size={24} className="text-primary-foreground" />
             </div>
-            <span className="text-lg font-sans font-semibold text-sidebar-foreground">Study Spot</span>
+            <span className="font-sans font-semibold text-primary text-[sidebar-accent-foreground]">Study Spot</span>
           </div>
 
           <h1 className="text-4xl font-extrabold tracking-tight leading-[1.1] mb-4">
@@ -77,7 +77,7 @@ export default function Index() {
             className="glass-strong rounded-2xl p-4 flex items-start gap-4">
 
               <div className="">
-                <feature.icon size={20} className="text-foreground bg-card-foreground" />
+                <feature.icon size={20} className="text-foreground bg-neutral-50" />
               </div>
               <div>
                 <h3 className="text-sm font-bold mb-0.5">{feature.title}</h3>
