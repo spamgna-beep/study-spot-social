@@ -76,8 +76,8 @@ export default function Index() {
             transition={{ delay: 0.3 + i * 0.1 }}
             className="glass-strong rounded-2xl p-4 flex items-start gap-4">
 
-              <div className={`w-10 h-10 rounded-xl ${feature.color} flex items-center justify-center flex-shrink-0`}>
-                <feature.icon size={20} className="text-foreground" />
+              <div className="">
+                <feature.icon size={20} className="text-foreground bg-cafe" />
               </div>
               <div>
                 <h3 className="text-sm font-bold mb-0.5">{feature.title}</h3>
