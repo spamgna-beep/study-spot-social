@@ -9,6 +9,7 @@ const vibes = [
   { value: 'focused', emoji: '📚', label: 'Focused' },
   { value: 'social', emoji: '☕', label: 'Social' },
   { value: 'silent', emoji: '🔇', label: 'Silent' },
+  { value: 'flow', emoji: '🌊', label: 'Flow' },
   { value: 'chill', emoji: '🎧', label: 'Chill' },
   { value: 'cramming', emoji: '🔥', label: 'Cramming' },
 ] as const;

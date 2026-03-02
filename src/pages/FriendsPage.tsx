@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { UserPlus, UserCheck, UserX, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
+import FriendProfileModal from '@/components/FriendProfileModal';
 
 interface FriendProfile {
   id: string;
@@ -14,6 +15,8 @@ interface FriendProfile {
   avatar_url: string | null;
   major: string | null;
   year: string | null;
+  bio: string | null;
+  username: string | null;
 }
 
 interface FriendshipRow {
@@ -30,6 +33,7 @@ export default function FriendsPage() {
   const [pendingRequests, setPendingRequests] = useState<(FriendshipRow & { profile: FriendProfile })[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FriendProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<FriendProfile | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
@@ -38,6 +42,14 @@ export default function FriendsPage() {
   useEffect(() => {
     if (!user) return;
     fetchFriendships();
+
+    // Realtime updates
+    const channel = supabase
+      .channel('friendships_page_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => fetchFriendships())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   const fetchFriendships = async () => {
@@ -82,7 +94,7 @@ export default function FriendsPage() {
     const { data } = await supabase
       .from('profiles')
       .select('*')
-      .ilike('display_name', `%${searchQuery}%`)
+      .or(`display_name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
       .neq('user_id', user.id)
       .limit(10);
     setSearchResults((data as FriendProfile[]) || []);
@@ -90,22 +102,38 @@ export default function FriendsPage() {
 
   const sendRequest = async (targetUserId: string) => {
     if (!user) return;
+    // Check if friendship already exists
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('id')
+      .or(`and(requester_id.eq.${user.id},addressee_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},addressee_id.eq.${user.id})`)
+      .maybeSingle();
+
+    if (existing) {
+      toast.error('Friend request already exists!');
+      return;
+    }
+
     const { error } = await supabase.from('friendships').insert({
       requester_id: user.id,
       addressee_id: targetUserId,
     });
     if (error) {
-      toast.error(error.message.includes('duplicate') ? 'Request already sent!' : error.message);
+      toast.error(error.message);
     } else {
-      toast.success('Friend request sent!');
+      toast.success('Friend request sent! 🤝');
       setSearchResults(prev => prev.filter(p => p.user_id !== targetUserId));
+      fetchFriendships();
     }
   };
 
   const acceptRequest = async (friendshipId: string) => {
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
-    toast.success('Friend added! 🎉');
-    fetchFriendships();
+    const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    if (error) toast.error(error.message);
+    else {
+      toast.success('Friend added! 🎉');
+      fetchFriendships();
+    }
   };
 
   const declineRequest = async (friendshipId: string) => {
@@ -132,7 +160,7 @@ export default function FriendsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search by name..."
+              placeholder="Search by name or username..."
               className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -153,7 +181,10 @@ export default function FriendsPage() {
                   animate={{ opacity: 1, x: 0 }}
                   className="glass-strong rounded-xl p-3 flex items-center justify-between"
                 >
-                  <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedProfile(profile)}
+                    className="flex items-center gap-3 text-left flex-1"
+                  >
                     <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">
                       {profile.display_name?.[0] || '?'}
                     </div>
@@ -161,10 +192,10 @@ export default function FriendsPage() {
                       <p className="text-sm font-medium">{profile.display_name}</p>
                       {profile.major && <p className="text-xs text-muted-foreground">{profile.major}</p>}
                     </div>
-                  </div>
+                  </button>
                   <button
                     onClick={() => sendRequest(profile.user_id)}
-                    className="p-2 rounded-xl bg-primary/10 text-primary-foreground hover:bg-primary/20 transition-colors"
+                    className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                   >
                     <UserPlus size={18} />
                   </button>
@@ -191,7 +222,7 @@ export default function FriendsPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => acceptRequest(req.id)} className="p-2 rounded-xl bg-primary/15 hover:bg-primary/25 transition-colors">
-                      <UserCheck size={18} className="text-primary-foreground" />
+                      <UserCheck size={18} className="text-primary" />
                     </button>
                     <button onClick={() => declineRequest(req.id)} className="p-2 rounded-xl bg-destructive/10 hover:bg-destructive/20 transition-colors">
                       <UserX size={18} className="text-destructive" />
@@ -216,7 +247,11 @@ export default function FriendsPage() {
           ) : (
             <div className="space-y-2">
               {friends.map((friend) => (
-                <div key={friend.id} className="glass-strong rounded-xl p-3 flex items-center gap-3">
+                <button
+                  key={friend.id}
+                  onClick={() => setSelectedProfile(friend.profile)}
+                  className="w-full glass-strong rounded-xl p-3 flex items-center gap-3 text-left hover:bg-muted/50 transition-colors"
+                >
                   <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">
                     {friend.profile.display_name?.[0] || '?'}
                   </div>
@@ -226,12 +261,18 @@ export default function FriendsPage() {
                       <p className="text-xs text-muted-foreground">{friend.profile.major} {friend.profile.year && `• ${friend.profile.year}`}</p>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      <FriendProfileModal
+        open={!!selectedProfile}
+        onClose={() => setSelectedProfile(null)}
+        profile={selectedProfile}
+      />
 
       <BottomNav />
     </div>

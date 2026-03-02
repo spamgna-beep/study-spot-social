@@ -118,6 +118,44 @@ export type Database = {
         }
         Relationships: []
       }
+      lore_drops: {
+        Row: {
+          author_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          location_id: string | null
+          message: string
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          location_id?: string | null
+          message: string
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          location_id?: string | null
+          message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lore_drops_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -160,17 +198,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "moderator" | "user"
       friendship_status: "pending" | "accepted" | "blocked"
       location_type: "library" | "cafe" | "outdoor"
-      vibe_type: "focused" | "social" | "silent" | "chill" | "cramming"
+      vibe_type: "focused" | "social" | "silent" | "chill" | "cramming" | "flow"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -298,9 +361,10 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "moderator", "user"],
       friendship_status: ["pending", "accepted", "blocked"],
       location_type: ["library", "cafe", "outdoor"],
-      vibe_type: ["focused", "social", "silent", "chill", "cramming"],
+      vibe_type: ["focused", "social", "silent", "chill", "cramming", "flow"],
     },
   },
 } as const
