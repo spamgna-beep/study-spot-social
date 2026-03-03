@@ -9,6 +9,7 @@ const vibes = [
   { value: 'social', emoji: '☕', label: 'Social' },
   { value: 'silent', emoji: '🔇', label: 'Silent' },
   { value: 'flow', emoji: '🌊', label: 'Flow' },
+  { value: 'party', emoji: '🎉', label: 'Party' },
 ] as const;
 
 interface QuickVibeProps {
@@ -29,7 +30,6 @@ export default function QuickVibe({ ghostMode, onGhostToggle, currentVibe }: Qui
     if (!user) return;
     setActiveVibe(vibe);
 
-    // Update active check-in vibe or create quick check-in
     const { data: existing } = await supabase
       .from('check_ins')
       .select('id')
@@ -46,43 +46,36 @@ export default function QuickVibe({ ghostMode, onGhostToggle, currentVibe }: Qui
   };
 
   return (
-    <div className="flex gap-2 items-center">
+    <div className="flex flex-col gap-1.5">
       {vibes.map((v, i) => (
         <motion.button
           key={v.value}
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: i * 0.05, type: 'spring', damping: 12 }}
-          whileTap={{ scale: 0.9 }}
+          transition={{ delay: i * 0.03, type: 'spring', damping: 14 }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => handleVibeSelect(v.value)}
-          className={`relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-2xl transition-all text-xs font-medium ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-medium w-full ${
             activeVibe === v.value
               ? 'bg-primary text-primary-foreground shadow-glow-primary'
               : 'glass-strong text-foreground'
           }`}
-          style={{
-            transform: activeVibe === v.value ? 'translateY(-2px)' : 'none',
-          }}
         >
-          <span className="text-lg">{v.emoji}</span>
+          <span className="text-base">{v.emoji}</span>
           <span>{v.label}</span>
         </motion.button>
       ))}
-
-      {/* Ghost toggle */}
       <motion.button
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.2, type: 'spring', damping: 12 }}
-        whileTap={{ scale: 0.9 }}
+        transition={{ delay: 0.15, type: 'spring', damping: 14 }}
+        whileTap={{ scale: 0.95 }}
         onClick={onGhostToggle}
-        className={`relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-2xl transition-all text-xs font-medium ${
-          ghostMode
-            ? 'bg-foreground text-background'
-            : 'glass-strong text-foreground'
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-medium w-full ${
+          ghostMode ? 'bg-foreground text-background' : 'glass-strong text-foreground'
         }`}
       >
-        <span className="text-lg">👻</span>
+        <span className="text-base">👻</span>
         <span>Ghost</span>
       </motion.button>
     </div>

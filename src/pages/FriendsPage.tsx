@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
-import { UserPlus, UserCheck, UserX, Search } from 'lucide-react';
+import { UserPlus, UserCheck, UserX, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import FriendProfileModal from '@/components/FriendProfileModal';
@@ -43,7 +43,6 @@ export default function FriendsPage() {
     if (!user) return;
     fetchFriendships();
 
-    // Realtime updates
     const channel = supabase
       .channel('friendships_page_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => fetchFriendships())
@@ -102,7 +101,6 @@ export default function FriendsPage() {
 
   const sendRequest = async (targetUserId: string) => {
     if (!user) return;
-    // Check if friendship already exists
     const { data: existing } = await supabase
       .from('friendships')
       .select('id')
@@ -138,6 +136,12 @@ export default function FriendsPage() {
 
   const declineRequest = async (friendshipId: string) => {
     await supabase.from('friendships').delete().eq('id', friendshipId);
+    fetchFriendships();
+  };
+
+  const removeFriend = async (friendshipId: string) => {
+    await supabase.from('friendships').delete().eq('id', friendshipId);
+    toast.success('Friend removed');
     fetchFriendships();
   };
 
@@ -247,21 +251,32 @@ export default function FriendsPage() {
           ) : (
             <div className="space-y-2">
               {friends.map((friend) => (
-                <button
+                <div
                   key={friend.id}
-                  onClick={() => setSelectedProfile(friend.profile)}
-                  className="w-full glass-strong rounded-xl p-3 flex items-center gap-3 text-left hover:bg-muted/50 transition-colors"
+                  className="glass-strong rounded-xl p-3 flex items-center justify-between"
                 >
-                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">
-                    {friend.profile.display_name?.[0] || '?'}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{friend.profile.display_name}</p>
-                    {friend.profile.major && (
-                      <p className="text-xs text-muted-foreground">{friend.profile.major} {friend.profile.year && `• ${friend.profile.year}`}</p>
-                    )}
-                  </div>
-                </button>
+                  <button
+                    onClick={() => setSelectedProfile(friend.profile)}
+                    className="flex items-center gap-3 text-left flex-1"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">
+                      {friend.profile.display_name?.[0] || '?'}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{friend.profile.display_name}</p>
+                      {friend.profile.major && (
+                        <p className="text-xs text-muted-foreground">{friend.profile.major} {friend.profile.year && `• ${friend.profile.year}`}</p>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => removeFriend(friend.id)}
+                    className="p-2 rounded-xl bg-destructive/10 hover:bg-destructive/20 transition-colors"
+                    title="Remove friend"
+                  >
+                    <X size={16} className="text-destructive" />
+                  </button>
+                </div>
               ))}
             </div>
           )}

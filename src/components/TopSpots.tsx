@@ -18,15 +18,17 @@ export default function TopSpots({ locations, checkIns }: TopSpotsProps) {
       vibes[ci.vibe] = (vibes[ci.vibe] || 0) + 1;
     });
     const socialPct = total > 0 ? Math.round(((vibes['social'] || 0) / total) * 100) : 0;
-    const studyPct = total > 0 ? Math.round(((vibes['focused'] || 0) + (vibes['silent'] || 0) + (vibes['flow'] || 0)) / total * 100) : 0;
+    const studyPct = total > 0 ? Math.round((((vibes['focused'] || 0) + (vibes['silent'] || 0) + (vibes['flow'] || 0)) / total) * 100) : 0;
+    const partyPct = total > 0 ? Math.round(((vibes['party'] || 0) / total) * 100) : 0;
 
     let headline = `${loc.name}`;
     if (total === 0) headline = `${loc.name} — Empty`;
+    else if (partyPct > 40) headline = `${loc.name} is Lit! 🎉`;
     else if (socialPct > 60) headline = `${loc.name} is Buzzing! 🐝`;
     else if (studyPct > 60) headline = `${loc.name} is Locked In 🔒`;
     else if (total >= 3) headline = `${loc.name} is Active 🔥`;
 
-    return { ...loc, total, socialPct, studyPct, headline };
+    return { ...loc, total, socialPct, studyPct, partyPct, headline };
   }).sort((a, b) => b.total - a.total);
 
   if (spotData.length === 0) return null;
@@ -38,7 +40,7 @@ export default function TopSpots({ locations, checkIns }: TopSpotsProps) {
         className="glass-strong rounded-2xl px-4 py-2.5 flex items-center gap-2 w-full"
         whileTap={{ scale: 0.98 }}
       >
-        <TrendingUp size={16} className="text-primary-foreground" />
+        <TrendingUp size={16} className="text-primary" />
         <span className="text-xs font-semibold flex-1 text-left">Top Spots Today</span>
         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </motion.button>
@@ -65,11 +67,13 @@ export default function TopSpots({ locations, checkIns }: TopSpotsProps) {
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
                   <span>📚 Study {spot.studyPct}%</span>
                   <span>☕ Social {spot.socialPct}%</span>
+                  {spot.partyPct > 0 && <span>🎉 Party {spot.partyPct}%</span>}
                 </div>
                 {spot.total > 0 && (
                   <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden flex">
                     <div className="h-full bg-primary rounded-l-full" style={{ width: `${spot.studyPct}%` }} />
                     <div className="h-full bg-cafe" style={{ width: `${spot.socialPct}%` }} />
+                    {spot.partyPct > 0 && <div className="h-full bg-destructive" style={{ width: `${spot.partyPct}%` }} />}
                   </div>
                 )}
               </motion.div>

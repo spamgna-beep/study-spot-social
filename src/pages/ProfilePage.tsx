@@ -6,6 +6,9 @@ import { motion } from 'framer-motion';
 import { LogOut, Ghost, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
+import PomodoroTimer from '@/components/PomodoroTimer';
+
+const YEAR_OPTIONS = ['Foundation', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'Doctorate'];
 
 export default function ProfilePage() {
   const { user, loading, signOut } = useAuth();
@@ -70,15 +73,17 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           {/* Avatar */}
           <div className="flex justify-center mb-6">
             <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center text-2xl font-bold text-secondary-foreground shadow-soft">
               {displayName[0] || '?'}
             </div>
+          </div>
+
+          {/* Study Stats */}
+          <div className="mb-4">
+            <PomodoroTimer />
           </div>
 
           {/* Form */}
@@ -112,12 +117,16 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Year</label>
-                <input
+                <select
                   value={year}
                   onChange={(e) => setYear(e.target.value)}
-                  placeholder="Junior"
-                  className="w-full px-4 py-2.5 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
+                  className="w-full px-4 py-2.5 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
+                >
+                  <option value="">Select year</option>
+                  {YEAR_OPTIONS.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
@@ -143,9 +152,7 @@ export default function ProfilePage() {
             </div>
             <button
               onClick={() => setGhostMode(!ghostMode)}
-              className={`w-12 h-7 rounded-full transition-colors relative ${
-                ghostMode ? 'bg-primary' : 'bg-muted'
-              }`}
+              className={`w-12 h-7 rounded-full transition-colors relative ${ghostMode ? 'bg-primary' : 'bg-muted'}`}
             >
               <motion.div
                 className="w-5 h-5 rounded-full bg-card shadow-soft absolute top-1"

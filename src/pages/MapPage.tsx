@@ -16,31 +16,31 @@ import LoreDrops from '@/components/LoreDrops';
 import { useNavigate } from 'react-router-dom';
 
 const VIBE_EMOJI: Record<string, string> = {
-  focused: '📚',
-  social: '☕',
-  silent: '🔇',
-  flow: '🌊',
-  chill: '🎧',
-  cramming: '🔥',
+  focused: '📚', social: '☕', silent: '🔇', flow: '🌊',
+  chill: '🎧', cramming: '🔥', party: '🎉',
 };
 
 const VIBE_COLORS: Record<string, string> = {
-  focused: 'hsl(48, 94%, 56%)',
-  social: 'hsl(30, 25%, 55%)',
-  silent: 'hsl(100, 18%, 68%)',
-  flow: 'hsl(220, 60%, 60%)',
-  chill: 'hsl(200, 30%, 65%)',
-  cramming: 'hsl(0, 60%, 65%)',
+  focused: 'hsl(48, 94%, 56%)', social: 'hsl(30, 25%, 55%)',
+  silent: 'hsl(100, 18%, 68%)', flow: 'hsl(220, 60%, 60%)',
+  chill: 'hsl(200, 30%, 65%)', cramming: 'hsl(0, 60%, 65%)',
+  party: 'hsl(330, 80%, 60%)',
 };
 
 const LOCATION_COLORS: Record<string, string> = {
-  library: '#A8B79A',
-  cafe: '#A68B6B',
-  outdoor: '#7DB37D',
+  library: '#A8B79A', cafe: '#A68B6B', outdoor: '#7DB37D',
 };
 
-// Sheffield center
 const SHEFFIELD_CENTER: [number, number] = [-1.4886, 53.3811];
+const PROXIMITY_METERS = 200; // auto-remove check-in if user leaves this radius
+
+function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export default function MapPage() {
   const { user, loading } = useAuth();
@@ -48,6 +48,7 @@ export default function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const friendMarkersRef = useRef<maplibregl.Marker[]>([]);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
@@ -73,25 +74,40 @@ export default function MapPage() {
     });
   }, [user]);
 
-  // Broadcast location to check-in
+  // Broadcast location + auto-remove check-in if user left location
   useEffect(() => {
     if (!user || !position || ghostMode) return;
     const updateLocation = async () => {
       const { data: activeCI } = await supabase
         .from('check_ins')
-        .select('id')
+        .select('id, location_id')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
+
       if (activeCI) {
         await supabase.from('check_ins').update({
           latitude: position.latitude,
           longitude: position.longitude,
         }).eq('id', activeCI.id);
+
+        // Auto-remove if user left the location
+        if (activeCI.location_id) {
+          const loc = locations.find(l => l.id === activeCI.location_id);
+          if (loc) {
+            const dist = distanceMeters(position.latitude, position.longitude, loc.latitude, loc.longitude);
+            if (dist > PROXIMITY_METERS) {
+              await supabase.from('check_ins').update({
+                is_active: false,
+                ended_at: new Date().toISOString(),
+              }).eq('id', activeCI.id);
+            }
+          }
+        }
       }
     };
     updateLocation();
-  }, [position, user, ghostMode]);
+  }, [position, user, ghostMode, locations]);
 
   // Init MapLibre
   useEffect(() => {
@@ -108,7 +124,6 @@ export default function MapPage() {
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     map.on('load', () => {
-      // 3D building extrusion
       const layers = map.getStyle().layers;
       if (layers) {
         for (const layer of layers) {
@@ -162,28 +177,29 @@ export default function MapPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Place location markers on map
+  // Place location markers with user count
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear old markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
     locations.forEach(loc => {
-      const el = document.createElement('div');
-      el.className = 'location-marker';
-      el.style.width = '16px';
-      el.style.height = '16px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = LOCATION_COLORS[loc.type] || '#888';
-      el.style.border = '3px solid white';
-      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-      el.style.cursor = 'pointer';
+      const count = activeCheckIns.filter(ci => ci.location_id === loc.id).length;
+      const hasParty = activeCheckIns.some(ci => ci.location_id === loc.id && ci.vibe === 'party');
 
-      const popup = new maplibregl.Popup({ offset: 12, closeButton: false })
-        .setHTML(`<div style="font-size:12px;font-weight:600;padding:2px 4px;">${loc.name}</div>`);
+      const el = document.createElement('div');
+      el.style.position = 'relative';
+      el.style.cursor = 'pointer';
+      el.innerHTML = `
+        <div style="width:20px;height:20px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+        ${count > 0 ? `<div style="position:absolute;-top:6px;-right:6px;min-width:18px;height:18px;border-radius:9px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid white;padding:0 3px;top:-6px;right:-8px;">${count}</div>` : ''}
+        ${hasParty ? `<div style="position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);font-size:14px;animation:float 2s ease-in-out infinite;">🎉</div>` : ''}
+      `;
+
+      const popup = new maplibregl.Popup({ offset: 16, closeButton: false })
+        .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">${count} studying here</span></div>`);
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([loc.longitude, loc.latitude])
@@ -192,45 +208,49 @@ export default function MapPage() {
 
       markersRef.current.push(marker);
     });
-  }, [locations]);
+  }, [locations, activeCheckIns]);
 
   // Place friend check-in avatars on map
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove old friend markers (keep location markers)
-    const friendMarkerClass = 'friend-avatar-marker';
-    document.querySelectorAll(`.${friendMarkerClass}`).forEach(el => el.remove());
+    friendMarkersRef.current.forEach(m => m.remove());
+    friendMarkersRef.current = [];
 
     activeCheckIns.forEach(ci => {
-      // Only show friends (not self) who are not in ghost mode and have coordinates
       const profile = ci.profiles as any;
       if (!ci.latitude || !ci.longitude) return;
-      if (ci.user_id === user?.id) return; // don't show self as friend
+      if (ci.user_id === user?.id) return;
       if (profile?.ghost_mode) return;
       if (!friendIds.includes(ci.user_id)) return;
 
       const initial = profile?.display_name?.[0] || '?';
       const vibeEmoji = VIBE_EMOJI[ci.vibe] || '';
+      const locName = locations.find(l => l.id === ci.location_id)?.name;
 
       const el = document.createElement('div');
-      el.className = friendMarkerClass;
       el.style.position = 'relative';
       el.innerHTML = `
-        <div style="width:40px;height:40px;border-radius:50%;background:hsl(100,18%,68%);border:3px solid white;box-shadow:0 2px 12px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:hsl(100,20%,15%);">
+        <div style="width:36px;height:36px;border-radius:50%;background:hsl(100,18%,68%);border:3px solid white;box-shadow:0 2px 12px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:hsl(100,20%,15%);">
           ${initial}
         </div>
-        <div style="position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:10px;">
+        <div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;">
           ${vibeEmoji}
         </div>
       `;
 
-      new maplibregl.Marker({ element: el })
+      const popup = new maplibregl.Popup({ offset: 20, closeButton: false })
+        .setHTML(`<div style="font-size:11px;padding:2px 4px;"><strong>${profile?.display_name || 'Friend'}</strong>${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}${ci.study_goal ? `<br/><span style="color:#888;">🎯 ${ci.study_goal}</span>` : ''}</div>`);
+
+      const marker = new maplibregl.Marker({ element: el })
         .setLngLat([ci.longitude, ci.latitude])
+        .setPopup(popup)
         .addTo(map);
+
+      friendMarkersRef.current.push(marker);
     });
-  }, [activeCheckIns, friendIds, user?.id]);
+  }, [activeCheckIns, friendIds, user?.id, locations]);
 
   // Show own location
   useEffect(() => {
@@ -254,7 +274,6 @@ export default function MapPage() {
     }
   }, [position]);
 
-  // Ghost mode toggle
   const toggleGhostMode = async () => {
     if (!user) return;
     const newMode = !ghostMode;
@@ -262,10 +281,9 @@ export default function MapPage() {
     await supabase.from('profiles').update({ ghost_mode: newMode }).eq('user_id', user.id);
   };
 
-  // Vibe bar data
   const vibeData = (() => {
     const total = activeCheckIns.length || 1;
-    const counts: Record<string, number> = { focused: 0, social: 0, silent: 0, flow: 0, chill: 0, cramming: 0 };
+    const counts: Record<string, number> = { focused: 0, social: 0, silent: 0, flow: 0, chill: 0, cramming: 0, party: 0 };
     activeCheckIns.forEach(ci => { counts[ci.vibe] = (counts[ci.vibe] || 0) + 1; });
     return Object.entries(counts).map(([key, count]) => ({
       label: key.charAt(0).toUpperCase() + key.slice(1),
@@ -279,7 +297,6 @@ export default function MapPage() {
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-background">
-      {/* Map */}
       <div ref={mapContainer} className="absolute inset-0" />
 
       {/* Top bar */}
@@ -299,11 +316,10 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Top Spots */}
       <TopSpots locations={locations} checkIns={activeCheckIns} />
 
-      {/* Quick Vibe - bottom area above nav */}
-      <div className="absolute bottom-44 left-4 right-4 z-30 overflow-x-auto">
+      {/* Quick Vibe - vertical stack above FAB */}
+      <div className="absolute bottom-40 left-4 z-30 w-28">
         <QuickVibe ghostMode={ghostMode} onGhostToggle={toggleGhostMode} currentVibe={currentVibe} />
       </div>
 
@@ -312,15 +328,13 @@ export default function MapPage() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setCheckInOpen(true)}
-        className="fixed bottom-32 right-5 z-40 w-14 h-14 rounded-2xl bg-primary text-primary-foreground shadow-glow-primary flex items-center justify-center"
+        className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-2xl bg-primary text-primary-foreground shadow-glow-primary flex items-center justify-center"
       >
         <Plus size={24} strokeWidth={2.5} />
       </motion.button>
 
-      {/* Vibe Analytics Bar */}
       <VibeBar data={vibeData} />
 
-      {/* Check-in Modal */}
       <CheckInModal
         open={checkInOpen}
         onClose={() => setCheckInOpen(false)}
