@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Send } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { useAdmin } from '@/hooks/useAdmin';
-import { toast } from 'sonner';
+
+const CATEGORY_STYLES: Record<string, { bg: string; border: string; icon: string }> = {
+  general: { bg: 'bg-muted/60', border: 'border-border', icon: '📢' },
+  special_offer: { bg: 'bg-primary/10', border: 'border-primary/30', icon: '🎁' },
+  party_announced: { bg: 'bg-destructive/10', border: 'border-destructive/30', icon: '🎉' },
+  serious: { bg: 'bg-foreground/10', border: 'border-foreground/20', icon: '⚠️' },
+  call_to_action: { bg: 'bg-secondary/30', border: 'border-secondary/50', icon: '📣' },
+};
 
 interface LoreDrop {
   id: string;
@@ -12,6 +17,7 @@ interface LoreDrop {
   created_at: string;
   location_id: string | null;
   is_active: boolean;
+  category: string;
 }
 
 interface LoreDropsProps {
@@ -19,13 +25,8 @@ interface LoreDropsProps {
 }
 
 export default function LoreDrops({ locations }: LoreDropsProps) {
-  const { user } = useAuth();
-  const isAdmin = useAdmin(user?.id);
   const [drops, setDrops] = useState<LoreDrop[]>([]);
   const [showPanel, setShowPanel] = useState(false);
-  const [newMessage, setNewMessage] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -47,27 +48,10 @@ export default function LoreDrops({ locations }: LoreDropsProps) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const sendDrop = async () => {
-    if (!user || !newMessage.trim()) return;
-    setSending(true);
-    const { error } = await supabase.from('lore_drops').insert({
-      author_id: user.id,
-      message: newMessage.trim(),
-      location_id: selectedLocation || null,
-    });
-    if (error) toast.error(error.message);
-    else {
-      toast.success('Lore dropped! 📢');
-      setNewMessage('');
-    }
-    setSending(false);
-  };
-
   const hasUnread = drops.length > 0;
 
   return (
     <>
-      {/* Bell icon */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={() => setShowPanel(true)}
@@ -79,7 +63,6 @@ export default function LoreDrops({ locations }: LoreDropsProps) {
         )}
       </motion.button>
 
-      {/* Panel */}
       <AnimatePresence>
         {showPanel && (
           <>
@@ -91,66 +74,39 @@ export default function LoreDrops({ locations }: LoreDropsProps) {
               onClick={() => setShowPanel(false)}
             />
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 glass-strong rounded-t-3xl p-5 pb-10 max-h-[70vh] overflow-y-auto"
+              initial={{ opacity: 0, y: -20, x: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, x: 20, scale: 0.9 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed top-16 right-4 z-50 glass-strong rounded-2xl p-4 w-80 max-h-[70vh] overflow-y-auto shadow-soft"
+              style={{ transformOrigin: 'top right' }}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold">📢 Campus Lore</h2>
-                <button onClick={() => setShowPanel(false)} className="p-2 rounded-full hover:bg-muted">
-                  <X size={18} />
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold">📢 Campus Lore</h2>
+                <button onClick={() => setShowPanel(false)} className="p-1.5 rounded-full hover:bg-muted">
+                  <X size={14} />
                 </button>
               </div>
 
-              {/* Admin compose */}
-              {isAdmin && (
-                <div className="mb-4 p-3 rounded-xl bg-muted/50 space-y-2">
-                  <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider">Admin — Drop Lore</p>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="What's the campus gossip? 👀"
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                  />
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedLocation}
-                      onChange={(e) => setSelectedLocation(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-lg bg-background text-xs"
-                    >
-                      <option value="">All campus</option>
-                      {locations.map(l => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={sendDrop}
-                      disabled={sending || !newMessage.trim()}
-                      className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
-                    >
-                      <Send size={12} /> Drop
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Drops list */}
               <div className="space-y-2">
                 {drops.length === 0 ? (
-                  <p className="text-center text-sm text-muted-foreground py-6">No lore yet... 🤫</p>
+                  <p className="text-center text-xs text-muted-foreground py-6">No lore yet... 🤫</p>
                 ) : (
                   drops.map((drop) => {
                     const loc = locations.find(l => l.id === drop.location_id);
+                    const style = CATEGORY_STYLES[drop.category] || CATEGORY_STYLES.general;
                     const ago = getTimeAgo(drop.created_at);
                     return (
-                      <div key={drop.id} className="p-3 rounded-xl bg-muted/40">
-                        <p className="text-sm">{drop.message}</p>
-                        <div className="flex gap-2 mt-1 text-[10px] text-muted-foreground">
-                          {loc && <span>📍 {loc.name}</span>}
-                          <span>{ago}</span>
+                      <div key={drop.id} className={`p-3 rounded-xl border ${style.bg} ${style.border}`}>
+                        <div className="flex items-start gap-2">
+                          <span className="text-base">{style.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium leading-relaxed">{drop.message}</p>
+                            <div className="flex gap-2 mt-1 text-[10px] text-muted-foreground">
+                              {loc && <span>📍 {loc.name}</span>}
+                              <span>{ago}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );

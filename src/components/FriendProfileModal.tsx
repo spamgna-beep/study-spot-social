@@ -1,10 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FriendProfileModalProps {
   open: boolean;
   onClose: () => void;
   profile: {
+    user_id: string;
     display_name: string | null;
     avatar_url: string | null;
     major: string | null;
@@ -15,7 +18,32 @@ interface FriendProfileModalProps {
 }
 
 export default function FriendProfileModal({ open, onClose, profile }: FriendProfileModalProps) {
+  const [studyStats, setStudyStats] = useState({ todayMinutes: 0, weekMinutes: 0 });
+
+  useEffect(() => {
+    if (!profile?.user_id || !open) return;
+    const fetchStats = async () => {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+
+      const [todayRes, weekRes] = await Promise.all([
+        supabase.from('study_sessions').select('duration_seconds').eq('user_id', profile.user_id).gte('created_at', todayStart),
+        supabase.from('study_sessions').select('duration_seconds').eq('user_id', profile.user_id).gte('created_at', weekStart),
+      ]);
+
+      const sum = (data: any[] | null) => (data || []).reduce((s, r) => s + (r.duration_seconds || 0), 0);
+      setStudyStats({
+        todayMinutes: Math.round(sum(todayRes.data) / 60),
+        weekMinutes: Math.round(sum(weekRes.data) / 60),
+      });
+    };
+    fetchStats();
+  }, [profile?.user_id, open]);
+
   if (!profile) return null;
+
+  const fmt = (mins: number) => mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
 
   return (
     <AnimatePresence>
@@ -51,6 +79,18 @@ export default function FriendProfileModal({ open, onClose, profile }: FriendPro
               {profile.bio && (
                 <p className="text-sm text-muted-foreground mt-3 leading-relaxed">{profile.bio}</p>
               )}
+
+              {/* Study Stats */}
+              <div className="grid grid-cols-2 gap-3 mt-4 w-full">
+                <div className="glass rounded-xl p-2.5 text-center">
+                  <p className="text-lg font-bold">{fmt(studyStats.todayMinutes)}</p>
+                  <p className="text-[10px] text-muted-foreground">Today</p>
+                </div>
+                <div className="glass rounded-xl p-2.5 text-center">
+                  <p className="text-lg font-bold">{fmt(studyStats.weekMinutes)}</p>
+                  <p className="text-[10px] text-muted-foreground">This Week</p>
+                </div>
+              </div>
             </div>
           </motion.div>
         </>

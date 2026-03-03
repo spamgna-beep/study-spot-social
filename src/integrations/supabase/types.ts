@@ -121,6 +121,7 @@ export type Database = {
       lore_drops: {
         Row: {
           author_id: string
+          category: Database["public"]["Enums"]["lore_category"]
           created_at: string
           expires_at: string | null
           id: string
@@ -130,6 +131,7 @@ export type Database = {
         }
         Insert: {
           author_id: string
+          category?: Database["public"]["Enums"]["lore_category"]
           created_at?: string
           expires_at?: string | null
           id?: string
@@ -139,6 +141,7 @@ export type Database = {
         }
         Update: {
           author_id?: string
+          category?: Database["public"]["Enums"]["lore_category"]
           created_at?: string
           expires_at?: string | null
           id?: string
@@ -159,6 +162,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          banned_until: string | null
           bio: string | null
           created_at: string
           display_name: string | null
@@ -172,6 +176,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          banned_until?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
@@ -185,6 +190,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          banned_until?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
@@ -195,6 +201,33 @@ export type Database = {
           user_id?: string
           username?: string | null
           year?: string | null
+        }
+        Relationships: []
+      }
+      study_sessions: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          ended_at: string | null
+          id: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -233,7 +266,20 @@ export type Database = {
       app_role: "admin" | "moderator" | "user"
       friendship_status: "pending" | "accepted" | "blocked"
       location_type: "library" | "cafe" | "outdoor"
-      vibe_type: "focused" | "social" | "silent" | "chill" | "cramming" | "flow"
+      lore_category:
+        | "general"
+        | "special_offer"
+        | "party_announced"
+        | "serious"
+        | "call_to_action"
+      vibe_type:
+        | "focused"
+        | "social"
+        | "silent"
+        | "chill"
+        | "cramming"
+        | "flow"
+        | "party"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -364,7 +410,22 @@ export const Constants = {
       app_role: ["admin", "moderator", "user"],
       friendship_status: ["pending", "accepted", "blocked"],
       location_type: ["library", "cafe", "outdoor"],
-      vibe_type: ["focused", "social", "silent", "chill", "cramming", "flow"],
+      lore_category: [
+        "general",
+        "special_offer",
+        "party_announced",
+        "serious",
+        "call_to_action",
+      ],
+      vibe_type: [
+        "focused",
+        "social",
+        "silent",
+        "chill",
+        "cramming",
+        "flow",
+        "party",
+      ],
     },
   },
 } as const

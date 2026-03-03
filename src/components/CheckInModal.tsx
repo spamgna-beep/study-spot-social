@@ -12,6 +12,7 @@ const vibes = [
   { value: 'flow', emoji: '🌊', label: 'Flow' },
   { value: 'chill', emoji: '🎧', label: 'Chill' },
   { value: 'cramming', emoji: '🔥', label: 'Cramming' },
+  { value: 'party', emoji: '🎉', label: 'Party' },
 ] as const;
 
 interface CheckInModalProps {
@@ -32,14 +33,12 @@ export default function CheckInModal({ open, onClose, locations }: CheckInModalP
     setSubmitting(true);
 
     try {
-      // End any active check-ins first
       await supabase
         .from('check_ins')
         .update({ is_active: false, ended_at: new Date().toISOString() })
         .eq('user_id', user.id)
         .eq('is_active', true);
 
-      // Create new check-in
       const { error } = await supabase.from('check_ins').insert({
         user_id: user.id,
         location_id: selectedLocation || null,
@@ -91,7 +90,6 @@ export default function CheckInModal({ open, onClose, locations }: CheckInModalP
               </button>
             </div>
 
-            {/* Vibe Selection */}
             <div className="mb-6">
               <p className="text-sm font-medium text-muted-foreground mb-3">What's your vibe?</p>
               <div className="flex gap-2 flex-wrap">
@@ -112,7 +110,6 @@ export default function CheckInModal({ open, onClose, locations }: CheckInModalP
               </div>
             </div>
 
-            {/* Location */}
             <div className="mb-6">
               <p className="text-sm font-medium text-muted-foreground mb-3">Where are you studying?</p>
               <div className="grid grid-cols-2 gap-2">
@@ -133,7 +130,6 @@ export default function CheckInModal({ open, onClose, locations }: CheckInModalP
               </div>
             </div>
 
-            {/* Study Goal */}
             <div className="mb-8">
               <p className="text-sm font-medium text-muted-foreground mb-3">Study goal (optional)</p>
               <input

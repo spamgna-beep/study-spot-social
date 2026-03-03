@@ -15,39 +15,31 @@ interface VibeBarProps {
 
 export default function VibeBar({ data }: VibeBarProps) {
   const [expanded, setExpanded] = useState(false);
-
   const sortedData = [...data].sort((a, b) => b.percentage - a.percentage);
 
   return (
-    <div className="fixed bottom-24 left-0 right-0 z-40 px-4">
-      <motion.div
-        layout
-        className="glass-strong rounded-2xl overflow-hidden"
-      >
+    <div className="fixed bottom-20 left-4 right-4 z-30">
+      <motion.div layout className="glass-strong rounded-2xl overflow-hidden">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between px-5 py-3"
+          className="w-full flex items-center justify-between px-4 py-2.5"
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">Campus Vibes</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs font-semibold">Campus Vibes</span>
+            <span className="text-[10px] text-muted-foreground">
               {data.reduce((sum, d) => sum + Math.round(d.percentage), 0) > 0 ? 'Live' : 'No activity'}
             </span>
           </div>
-          {expanded ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          {expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </button>
 
-        {/* Mini bar preview */}
         {!expanded && (
-          <div className="px-5 pb-3 flex gap-1 h-2 rounded-full overflow-hidden">
+          <div className="px-4 pb-2.5 flex gap-1 h-1.5 rounded-full overflow-hidden">
             {sortedData.map((v) => (
               <motion.div
                 key={v.label}
                 className="h-full rounded-full"
-                style={{ 
-                  width: `${Math.max(v.percentage, 2)}%`,
-                  backgroundColor: v.color,
-                }}
+                style={{ width: `${Math.max(v.percentage, 2)}%`, backgroundColor: v.color }}
                 layout
               />
             ))}
@@ -61,18 +53,18 @@ export default function VibeBar({ data }: VibeBarProps) {
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="px-5 pb-4"
+              className="px-4 pb-3"
             >
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {sortedData.map((vibe) => (
-                  <div key={vibe.label} className="flex items-center gap-3">
-                    <span className="text-lg w-7">{vibe.emoji}</span>
+                  <div key={vibe.label} className="flex items-center gap-2">
+                    <span className="text-sm w-6">{vibe.emoji}</span>
                     <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium">{vibe.label}</span>
-                        <span className="text-xs text-muted-foreground">{Math.round(vibe.percentage)}%</span>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-medium">{vibe.label}</span>
+                        <span className="text-[10px] text-muted-foreground">{Math.round(vibe.percentage)}%</span>
                       </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <motion.div
                           className="h-full rounded-full"
                           style={{ backgroundColor: vibe.color }}
