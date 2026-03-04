@@ -3,9 +3,14 @@ import { supabase } from '@/integrations/supabase/client';
 
 export function useAdmin(userId: string | undefined) {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(true);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setAdminLoading(false);
+      return;
+    }
+    setAdminLoading(true);
     supabase
       .from('user_roles')
       .select('role')
@@ -13,8 +18,9 @@ export function useAdmin(userId: string | undefined) {
       .eq('role', 'admin')
       .then(({ data }) => {
         setIsAdmin(!!(data && data.length > 0));
+        setAdminLoading(false);
       });
   }, [userId]);
 
-  return isAdmin;
+  return { isAdmin, adminLoading };
 }

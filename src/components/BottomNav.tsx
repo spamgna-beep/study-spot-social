@@ -8,7 +8,7 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const isAdmin = useAdmin(user?.id);
+  const { isAdmin } = useAdmin(user?.id);
 
   const tabs = [
     { icon: Home, label: 'Home', path: '/' },

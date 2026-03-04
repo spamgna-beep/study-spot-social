@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -7,15 +7,27 @@ interface StudyStats {
   weekMinutes: number;
 }
 
-export function usePomodoro() {
+interface PomodoroContextType {
+  isRunning: boolean;
+  elapsed: number;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
+  stats: StudyStats;
+  formatTime: (seconds: number) => string;
+  formatMinutes: (mins: number) => string;
+  fetchStats: () => Promise<void>;
+}
+
+const PomodoroContext = createContext<PomodoroContextType | null>(null);
+
+export function PomodoroProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [isRunning, setIsRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0); // seconds
+  const [elapsed, setElapsed] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [stats, setStats] = useState<StudyStats>({ todayMinutes: 0, weekMinutes: 0 });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch stats
   const fetchStats = useCallback(async () => {
     if (!user) return;
     const now = new Date();
@@ -36,7 +48,6 @@ export function usePomodoro() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  // Timer tick
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -48,9 +59,7 @@ export function usePomodoro() {
 
   const start = async () => {
     if (!user) return;
-    const { data, error } = await supabase.from('study_sessions').insert({
-      user_id: user.id,
-    }).select('id').single();
+    const { data } = await supabase.from('study_sessions').insert({ user_id: user.id }).select('id').single();
     if (data) {
       setSessionId(data.id);
       setElapsed(0);
@@ -84,5 +93,15 @@ export function usePomodoro() {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
-  return { isRunning, elapsed, start, stop, stats, formatTime, formatMinutes, fetchStats };
+  return (
+    <PomodoroContext.Provider value={{ isRunning, elapsed, start, stop, stats, formatTime, formatMinutes, fetchStats }}>
+      {children}
+    </PomodoroContext.Provider>
+  );
+}
+
+export function usePomodoro() {
+  const ctx = useContext(PomodoroContext);
+  if (!ctx) throw new Error('usePomodoro must be used within PomodoroProvider');
+  return ctx;
 }

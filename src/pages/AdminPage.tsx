@@ -24,7 +24,7 @@ const LOCATION_TYPES = [
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
-  const isAdmin = useAdmin(user?.id);
+  const { isAdmin, adminLoading } = useAdmin(user?.id);
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<any[]>([]);
   const [checkIns, setCheckIns] = useState<any[]>([]);
@@ -43,6 +43,7 @@ export default function AdminPage() {
   const [newLocType, setNewLocType] = useState('library');
   const [newLocLat, setNewLocLat] = useState('');
   const [newLocLng, setNewLocLng] = useState('');
+  const [newLocAddress, setNewLocAddress] = useState('');
 
   // Ban modal
   const [banUserId, setBanUserId] = useState<string | null>(null);
@@ -50,8 +51,11 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
-    if (!loading && user && !isAdmin) navigate('/map');
-  }, [user, loading, isAdmin, navigate]);
+  }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (!loading && !adminLoading && user && !isAdmin) navigate('/');
+  }, [user, loading, isAdmin, adminLoading, navigate]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -119,7 +123,7 @@ export default function AdminPage() {
 
   const addLocation = async () => {
     if (!newLocName.trim() || !newLocLat || !newLocLng) {
-      toast.error('Fill in all location fields');
+      toast.error('Fill in name, latitude and longitude');
       return;
     }
     const { error } = await supabase.from('locations').insert({
@@ -127,11 +131,12 @@ export default function AdminPage() {
       type: newLocType as any,
       latitude: parseFloat(newLocLat),
       longitude: parseFloat(newLocLng),
+      address: newLocAddress.trim() || null,
     });
     if (error) toast.error(error.message);
     else {
-      toast.success('Location added!');
-      setNewLocName(''); setNewLocLat(''); setNewLocLng('');
+      toast.success('Location added! It will appear on the map automatically.');
+      setNewLocName(''); setNewLocLat(''); setNewLocLng(''); setNewLocAddress('');
       fetchAll();
     }
   };
@@ -142,7 +147,13 @@ export default function AdminPage() {
     fetchAll();
   };
 
-  if (loading || !isAdmin) return null;
+  if (loading || adminLoading) return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <p className="text-muted-foreground text-sm">Loading...</p>
+    </div>
+  );
+
+  if (!isAdmin) return null;
 
   const tabs = [
     { key: 'profiles' as const, icon: Users, label: 'Users' },
@@ -176,6 +187,7 @@ export default function AdminPage() {
         {/* USERS TAB */}
         {tab === 'profiles' && (
           <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">{profiles.length} registered users</p>
             {profiles.map(p => {
               const isBanned = p.banned_until && new Date(p.banned_until) > new Date();
               return (
@@ -187,7 +199,8 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <span className="text-sm font-semibold">{p.display_name}</span>
-                        {isBanned && <span className="text-[10px] text-destructive ml-2">BANNED</span>}
+                        {p.username && <span className="text-[10px] text-muted-foreground ml-1">@{p.username}</span>}
+                        {isBanned && <span className="text-[10px] text-destructive ml-2 font-bold">BANNED until {new Date(p.banned_until).toLocaleDateString()}</span>}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -196,10 +209,7 @@ export default function AdminPage() {
                           Unban
                         </button>
                       ) : (
-                        <button
-                          onClick={() => setBanUserId(p.user_id)}
-                          className="p-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20"
-                        >
+                        <button onClick={() => setBanUserId(banUserId === p.user_id ? null : p.user_id)} className="p-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20">
                           <Ban size={12} className="text-destructive" />
                         </button>
                       )}
@@ -207,30 +217,19 @@ export default function AdminPage() {
                   </div>
                   {banUserId === p.user_id && (
                     <div className="flex gap-2 items-center p-2 rounded-lg bg-destructive/5">
-                      <input
-                        type="number"
-                        value={banDays}
-                        onChange={e => setBanDays(e.target.value)}
-                        min="1"
-                        className="w-16 px-2 py-1 rounded-lg bg-muted text-xs"
-                        placeholder="Days"
-                      />
+                      <input type="number" value={banDays} onChange={e => setBanDays(e.target.value)} min="1" className="w-16 px-2 py-1 rounded-lg bg-muted text-xs" placeholder="Days" />
                       <span className="text-[10px] text-muted-foreground">days</span>
-                      <button onClick={() => banUser(p.user_id)} className="px-3 py-1 rounded-lg bg-destructive text-destructive-foreground text-[10px] font-bold">
-                        Ban
-                      </button>
+                      <button onClick={() => banUser(p.user_id)} className="px-3 py-1 rounded-lg bg-destructive text-destructive-foreground text-[10px] font-bold">Ban</button>
                       <button onClick={() => setBanUserId(null)} className="text-[10px] text-muted-foreground">Cancel</button>
                     </div>
                   )}
-                  {['display_name', 'username', 'bio', 'major'].map(field => (
+                  {['display_name', 'username', 'bio', 'major', 'year'].map(field => (
                     <div key={field}>
-                      <label className="text-[10px] uppercase text-muted-foreground font-semibold">{field}</label>
+                      <label className="text-[10px] uppercase text-muted-foreground font-semibold">{field.replace('_', ' ')}</label>
                       <input
                         defaultValue={p[field] || ''}
                         onBlur={(e) => {
-                          if (e.target.value !== (p[field] || '')) {
-                            updateProfile(p.user_id, field, e.target.value);
-                          }
+                          if (e.target.value !== (p[field] || '')) updateProfile(p.user_id, field, e.target.value);
                         }}
                         className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
                       />
@@ -245,6 +244,7 @@ export default function AdminPage() {
         {/* CHECK-INS TAB */}
         {tab === 'checkins' && (
           <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">{checkIns.length} active check-ins</p>
             {checkIns.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-8">No active check-ins</p>
             ) : checkIns.map(ci => (
@@ -264,7 +264,6 @@ export default function AdminPage() {
         {/* LORE TAB */}
         {tab === 'lore' && (
           <div className="space-y-4">
-            {/* Compose */}
             <div className="glass-strong rounded-xl p-4 space-y-3">
               <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Drop Lore</p>
               <textarea
@@ -288,27 +287,15 @@ export default function AdminPage() {
                 ))}
               </div>
               <div className="flex gap-2">
-                <select
-                  value={loreLocation}
-                  onChange={(e) => setLoreLocation(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-lg bg-muted text-xs"
-                >
+                <select value={loreLocation} onChange={(e) => setLoreLocation(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-muted text-xs">
                   <option value="">All campus</option>
-                  {locations.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
+                  {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                 </select>
-                <button
-                  onClick={sendLoreDrop}
-                  disabled={loreSending || !loreMessage.trim()}
-                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
-                >
+                <button onClick={sendLoreDrop} disabled={loreSending || !loreMessage.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 flex items-center gap-1">
                   <Send size={12} /> Drop
                 </button>
               </div>
             </div>
-
-            {/* Existing drops */}
             <div className="space-y-2">
               {loreDrops.map(drop => (
                 <div key={drop.id} className="glass-strong rounded-xl p-3 flex items-center justify-between">
@@ -331,57 +318,27 @@ export default function AdminPage() {
         {/* LOCATIONS TAB */}
         {tab === 'locations' && (
           <div className="space-y-4">
-            {/* Add new */}
             <div className="glass-strong rounded-xl p-4 space-y-3">
               <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Add Location</p>
-              <input
-                value={newLocName}
-                onChange={(e) => setNewLocName(e.target.value)}
-                placeholder="Location name"
-                className="w-full px-3 py-2 rounded-lg bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-primary/30"
-              />
+              <input value={newLocName} onChange={(e) => setNewLocName(e.target.value)} placeholder="Location name (e.g., Western Bank Library)" className="w-full px-3 py-2 rounded-lg bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
+              <input value={newLocAddress} onChange={(e) => setNewLocAddress(e.target.value)} placeholder="Address (optional)" className="w-full px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
               <div className="grid grid-cols-3 gap-2">
-                <select
-                  value={newLocType}
-                  onChange={(e) => setNewLocType(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-muted text-xs"
-                >
-                  {LOCATION_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
+                <select value={newLocType} onChange={(e) => setNewLocType(e.target.value)} className="px-3 py-2 rounded-lg bg-muted text-xs">
+                  {LOCATION_TYPES.map(t => (<option key={t.value} value={t.value}>{t.label}</option>))}
                 </select>
-                <input
-                  value={newLocLat}
-                  onChange={(e) => setNewLocLat(e.target.value)}
-                  placeholder="Latitude"
-                  type="number"
-                  step="any"
-                  className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-                <input
-                  value={newLocLng}
-                  onChange={(e) => setNewLocLng(e.target.value)}
-                  placeholder="Longitude"
-                  type="number"
-                  step="any"
-                  className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
+                <input value={newLocLat} onChange={(e) => setNewLocLat(e.target.value)} placeholder="Latitude" type="number" step="any" className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                <input value={newLocLng} onChange={(e) => setNewLocLng(e.target.value)} placeholder="Longitude" type="number" step="any" className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
               </div>
-              <button
-                onClick={addLocation}
-                className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1"
-              >
+              <button onClick={addLocation} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1">
                 <Plus size={14} /> Add Location
               </button>
             </div>
-
-            {/* Existing locations */}
             <div className="space-y-2">
               {locations.map(loc => (
                 <div key={loc.id} className="glass-strong rounded-xl p-3 flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">{loc.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{loc.type} • {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}</p>
+                    <p className="text-[10px] text-muted-foreground">{loc.type} • {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}{loc.address ? ` • ${loc.address}` : ''}</p>
                   </div>
                   <button onClick={() => deleteLocation(loc.id)} className="p-2 rounded-lg bg-destructive/10 hover:bg-destructive/20">
                     <Trash2 size={14} className="text-destructive" />
