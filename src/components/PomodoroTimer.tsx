@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Play, Square, Clock, TrendingUp } from 'lucide-react';
-import { usePomodoro } from '@/hooks/usePomodoro';
+import { usePomodoro } from '@/contexts/PomodoroContext';
 
 interface PomodoroTimerProps {
   large?: boolean;
@@ -16,17 +16,11 @@ export default function PomodoroTimer({ large = false }: PomodoroTimerProps) {
         animate={{ opacity: 1, y: 0 }}
         className="glass-strong rounded-3xl p-6 text-center"
       >
-        {/* Timer display */}
         <div className="mb-6">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             {isRunning ? '🔥 Study Session Active' : '📚 Ready to Study?'}
           </p>
-          <motion.div
-            key={isRunning ? 'running' : 'stopped'}
-            initial={{ scale: 0.8 }}
-            animate={{ scale: 1 }}
-            className="relative"
-          >
+          <motion.div key={isRunning ? 'running' : 'stopped'} initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="relative">
             <div className={`text-6xl font-extrabold tabular-nums tracking-tight ${isRunning ? 'text-primary' : 'text-foreground'}`}>
               {formatTime(elapsed)}
             </div>
@@ -40,7 +34,6 @@ export default function PomodoroTimer({ large = false }: PomodoroTimerProps) {
           </motion.div>
         </div>
 
-        {/* Start/Stop button */}
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -54,7 +47,6 @@ export default function PomodoroTimer({ large = false }: PomodoroTimerProps) {
           {isRunning ? <><Square size={18} /> Stop Session</> : <><Play size={18} /> Start Studying</>}
         </motion.button>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 gap-3 mt-5">
           <div className="glass rounded-xl p-3 text-center">
             <Clock size={16} className="mx-auto mb-1 text-muted-foreground" />
@@ -71,7 +63,6 @@ export default function PomodoroTimer({ large = false }: PomodoroTimerProps) {
     );
   }
 
-  // Compact version for profile
   return (
     <div className="glass-strong rounded-2xl p-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">📊 Study Stats</p>

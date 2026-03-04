@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
@@ -13,6 +13,7 @@ import VibeBar from '@/components/VibeBar';
 import QuickVibe from '@/components/QuickVibe';
 import TopSpots from '@/components/TopSpots';
 import LoreDrops from '@/components/LoreDrops';
+import MapPomodoroButton from '@/components/MapPomodoroButton';
 import { useNavigate } from 'react-router-dom';
 
 const VIBE_EMOJI: Record<string, string> = {
@@ -32,7 +33,7 @@ const LOCATION_COLORS: Record<string, string> = {
 };
 
 const SHEFFIELD_CENTER: [number, number] = [-1.4886, 53.3811];
-const PROXIMITY_METERS = 200; // auto-remove check-in if user leaves this radius
+const PROXIMITY_METERS = 200;
 
 function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000;
@@ -55,6 +56,7 @@ export default function MapPage() {
   const [activeCheckIns, setActiveCheckIns] = useState<any[]>([]);
   const [ghostMode, setGhostMode] = useState(false);
   const [currentVibe, setCurrentVibe] = useState<string>('');
+  const [mapReady, setMapReady] = useState(false);
 
   const friendIds = useFriendIds(user?.id);
   const { position } = useGeolocation(!ghostMode);
@@ -63,7 +65,7 @@ export default function MapPage() {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
 
-  // Fetch user's ghost mode + current vibe
+  // Fetch ghost mode + current vibe
   useEffect(() => {
     if (!user) return;
     supabase.from('profiles').select('ghost_mode').eq('user_id', user.id).single().then(({ data }) => {
@@ -74,32 +76,26 @@ export default function MapPage() {
     });
   }, [user]);
 
-  // Broadcast location + auto-remove check-in if user left location
+  // Broadcast location + auto-remove check-in if user left
   useEffect(() => {
     if (!user || !position || ghostMode) return;
     const updateLocation = async () => {
       const { data: activeCI } = await supabase
-        .from('check_ins')
-        .select('id, location_id')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
+        .from('check_ins').select('id, location_id')
+        .eq('user_id', user.id).eq('is_active', true).maybeSingle();
 
       if (activeCI) {
         await supabase.from('check_ins').update({
-          latitude: position.latitude,
-          longitude: position.longitude,
+          latitude: position.latitude, longitude: position.longitude,
         }).eq('id', activeCI.id);
 
-        // Auto-remove if user left the location
         if (activeCI.location_id) {
           const loc = locations.find(l => l.id === activeCI.location_id);
           if (loc) {
             const dist = distanceMeters(position.latitude, position.longitude, loc.latitude, loc.longitude);
             if (dist > PROXIMITY_METERS) {
               await supabase.from('check_ins').update({
-                is_active: false,
-                ended_at: new Date().toISOString(),
+                is_active: false, ended_at: new Date().toISOString(),
               }).eq('id', activeCI.id);
             }
           }
@@ -116,24 +112,21 @@ export default function MapPage() {
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
       center: SHEFFIELD_CENTER,
-      zoom: 15,
-      pitch: 45,
-      bearing: -10,
+      zoom: 15, pitch: 45, bearing: -10,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     map.on('load', () => {
+      setMapReady(true);
       const layers = map.getStyle().layers;
       if (layers) {
         for (const layer of layers) {
           if (layer.id.includes('building') && layer.type === 'fill') {
             map.addLayer({
-              id: '3d-buildings',
-              source: layer.source,
+              id: '3d-buildings', source: layer.source,
               'source-layer': (layer as any)['source-layer'],
-              type: 'fill-extrusion',
-              minzoom: 14,
+              type: 'fill-extrusion', minzoom: 14,
               paint: {
                 'fill-extrusion-color': '#d4cfc4',
                 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 16, ['get', 'render_height']],
@@ -153,9 +146,17 @@ export default function MapPage() {
 
   // Fetch locations
   useEffect(() => {
-    supabase.from('locations').select('*').then(({ data }) => {
+    const fetch = async () => {
+      const { data } = await supabase.from('locations').select('*');
       if (data) setLocations(data);
-    });
+    };
+    fetch();
+    // Subscribe to location changes (admin adds/removes)
+    const channel = supabase
+      .channel('locations_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => fetch())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Fetch check-ins realtime
@@ -168,19 +169,17 @@ export default function MapPage() {
       if (data) setActiveCheckIns(data);
     };
     fetchCheckIns();
-
     const channel = supabase
       .channel('check_ins_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, () => fetchCheckIns())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Place location markers with user count
+  // Place location markers
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
@@ -193,37 +192,45 @@ export default function MapPage() {
       el.style.position = 'relative';
       el.style.cursor = 'pointer';
       el.innerHTML = `
-        <div style="width:20px;height:20px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
-        ${count > 0 ? `<div style="position:absolute;-top:6px;-right:6px;min-width:18px;height:18px;border-radius:9px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid white;padding:0 3px;top:-6px;right:-8px;">${count}</div>` : ''}
-        ${hasParty ? `<div style="position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);font-size:14px;animation:float 2s ease-in-out infinite;">🎉</div>` : ''}
+        <div style="width:24px;height:24px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+        ${count > 0 ? `<div style="position:absolute;top:-8px;right:-10px;min-width:20px;height:20px;border-radius:10px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid white;padding:0 4px;">${count}</div>` : ''}
+        ${hasParty ? `<div style="position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:16px;animation:float 2s ease-in-out infinite;">🎉</div>` : ''}
       `;
 
       const popup = new maplibregl.Popup({ offset: 16, closeButton: false })
         .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">${count} studying here</span></div>`);
 
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([loc.longitude, loc.latitude])
         .setPopup(popup)
         .addTo(map);
 
       markersRef.current.push(marker);
     });
-  }, [locations, activeCheckIns]);
+  }, [locations, activeCheckIns, mapReady]);
 
-  // Place friend check-in avatars on map
+  // Place friend check-in avatars
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     friendMarkersRef.current.forEach(m => m.remove());
     friendMarkersRef.current = [];
 
     activeCheckIns.forEach(ci => {
       const profile = ci.profiles as any;
-      if (!ci.latitude || !ci.longitude) return;
       if (ci.user_id === user?.id) return;
       if (profile?.ghost_mode) return;
       if (!friendIds.includes(ci.user_id)) return;
+
+      // Use location coords if no personal lat/lng
+      let lng = ci.longitude;
+      let lat = ci.latitude;
+      if (!lng || !lat) {
+        const loc = locations.find(l => l.id === ci.location_id);
+        if (loc) { lng = loc.longitude; lat = loc.latitude; }
+        else return;
+      }
 
       const initial = profile?.display_name?.[0] || '?';
       const vibeEmoji = VIBE_EMOJI[ci.vibe] || '';
@@ -243,19 +250,19 @@ export default function MapPage() {
       const popup = new maplibregl.Popup({ offset: 20, closeButton: false })
         .setHTML(`<div style="font-size:11px;padding:2px 4px;"><strong>${profile?.display_name || 'Friend'}</strong>${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}${ci.study_goal ? `<br/><span style="color:#888;">🎯 ${ci.study_goal}</span>` : ''}</div>`);
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([ci.longitude, ci.latitude])
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([lng, lat])
         .setPopup(popup)
         .addTo(map);
 
       friendMarkersRef.current.push(marker);
     });
-  }, [activeCheckIns, friendIds, user?.id, locations]);
+  }, [activeCheckIns, friendIds, user?.id, locations, mapReady]);
 
   // Show own location
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !position) return;
+    if (!map || !position || !mapReady) return;
 
     if (userMarkerRef.current) {
       userMarkerRef.current.setLngLat([position.longitude, position.latitude]);
@@ -268,11 +275,11 @@ export default function MapPage() {
       el.style.border = '4px solid white';
       el.style.boxShadow = '0 0 12px hsla(48, 94%, 56%, 0.4)';
 
-      userMarkerRef.current = new maplibregl.Marker({ element: el })
+      userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([position.longitude, position.latitude])
         .addTo(map);
     }
-  }, [position]);
+  }, [position, mapReady]);
 
   const toggleGhostMode = async () => {
     if (!user) return;
@@ -307,6 +314,7 @@ export default function MapPage() {
             <p className="text-xs text-muted-foreground">{activeCheckIns.length} studying now</p>
           </div>
           <div className="flex items-center gap-2">
+            <MapPomodoroButton />
             <LoreDrops locations={locations} />
             <div className="glass rounded-xl px-3 py-1.5 text-xs font-medium flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-outdoor animate-pulse" />
@@ -335,11 +343,7 @@ export default function MapPage() {
 
       <VibeBar data={vibeData} />
 
-      <CheckInModal
-        open={checkInOpen}
-        onClose={() => setCheckInOpen(false)}
-        locations={locations}
-      />
+      <CheckInModal open={checkInOpen} onClose={() => setCheckInOpen(false)} locations={locations} />
 
       <BottomNav />
     </div>
