@@ -7,6 +7,7 @@ import { UserPlus, UserCheck, UserX, Search, X, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import FriendProfileModal from '@/components/FriendProfileModal';
+import { getStudyRank } from '@/lib/ranks';
 
 interface FriendProfile {
   id: string;
@@ -74,17 +75,13 @@ export default function FriendsPage() {
     setFriends(accepted);
     setPendingRequests(pending);
 
-    // Fetch weekly study stats for accepted friends
+    // Fetch ALL-TIME study stats for friends (for rank calculation)
     if (accepted.length > 0) {
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      weekStart.setHours(0, 0, 0, 0);
       const friendUserIds = accepted.map(f => f.profile.user_id);
       const { data: sessions } = await supabase
         .from('study_sessions')
         .select('user_id, duration_seconds')
-        .in('user_id', friendUserIds)
-        .gte('created_at', weekStart.toISOString());
+        .in('user_id', friendUserIds);
       
       const statsMap: Record<string, number> = {};
       (sessions || []).forEach(s => {
@@ -132,14 +129,6 @@ export default function FriendsPage() {
     await supabase.from('friendships').delete().eq('id', friendshipId);
     toast.success('Friend removed');
     fetchFriendships();
-  };
-
-  const formatStudyTime = (seconds: number) => {
-    const mins = Math.round(seconds / 60);
-    if (mins < 60) return `${mins}m`;
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
   if (loading) return null;
@@ -222,25 +211,39 @@ export default function FriendsPage() {
           ) : (
             <div className="space-y-2">
               {friends.map((friend) => {
-                const weekSecs = friendStudyStats[friend.profile.user_id] || 0;
+                const totalSecs = friendStudyStats[friend.profile.user_id] || 0;
+                const totalHours = totalSecs / 3600;
+                const rank = getStudyRank(totalHours);
+                const weekHours = Math.round(totalHours * 10) / 10;
                 return (
                   <div key={friend.id} className="glass-strong rounded-xl p-3 flex items-center justify-between">
                     <button onClick={() => setSelectedProfile(friend.profile)} className="flex items-center gap-3 text-left flex-1">
-                      <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">{friend.profile.display_name?.[0] || '?'}</div>
-                      <div>
-                        <p className="text-sm font-medium">{friend.profile.display_name}</p>
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold text-secondary-foreground">{friend.profile.display_name?.[0] || '?'}</div>
+                        {rank && (
+                          <span className="absolute -bottom-0.5 -right-0.5 text-xs">{rank.emoji}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{friend.profile.display_name}</p>
+                          {rank && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: rank.color, color: 'white' }}>
+                              {rank.name}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          {friend.profile.major && <span>{friend.profile.major}</span>}
-                          {friend.profile.year && <span>• {friend.profile.year}</span>}
-                          {weekSecs > 0 && (
-                            <span className="flex items-center gap-0.5 text-primary font-medium">
-                              <Clock size={10} /> {formatStudyTime(weekSecs)} this week
+                          {friend.profile.major && <span className="truncate">{friend.profile.major}</span>}
+                          {totalSecs > 0 && (
+                            <span className="flex items-center gap-0.5 text-primary font-medium whitespace-nowrap">
+                              <Clock size={10} /> {weekHours}h total
                             </span>
                           )}
                         </div>
                       </div>
                     </button>
-                    <button onClick={() => removeFriend(friend.id)} className="p-2 rounded-xl bg-destructive/10 hover:bg-destructive/20 transition-colors" title="Remove friend">
+                    <button onClick={() => removeFriend(friend.id)} className="p-2 rounded-xl bg-destructive/10 hover:bg-destructive/20 transition-colors flex-shrink-0" title="Remove friend">
                       <X size={16} className="text-destructive" />
                     </button>
                   </div>
