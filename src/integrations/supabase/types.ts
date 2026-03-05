@@ -169,6 +169,7 @@ export type Database = {
           ghost_mode: boolean
           id: string
           major: string | null
+          study_coins: number
           updated_at: string
           user_id: string
           username: string | null
@@ -183,6 +184,7 @@ export type Database = {
           ghost_mode?: boolean
           id?: string
           major?: string | null
+          study_coins?: number
           updated_at?: string
           user_id: string
           username?: string | null
@@ -197,10 +199,41 @@ export type Database = {
           ghost_mode?: boolean
           id?: string
           major?: string | null
+          study_coins?: number
           updated_at?: string
           user_id?: string
           username?: string | null
           year?: string | null
+        }
+        Relationships: []
+      }
+      shop_items: {
+        Row: {
+          cost: number
+          created_at: string | null
+          description: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          type: Database["public"]["Enums"]["shop_item_type"]
+        }
+        Insert: {
+          cost?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          type: Database["public"]["Enums"]["shop_item_type"]
+        }
+        Update: {
+          cost?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          type?: Database["public"]["Enums"]["shop_item_type"]
         }
         Relationships: []
       }
@@ -230,6 +263,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_purchases: {
+        Row: {
+          equipped: boolean | null
+          id: string
+          item_id: string
+          purchased_at: string | null
+          user_id: string
+        }
+        Insert: {
+          equipped?: boolean | null
+          id?: string
+          item_id: string
+          purchased_at?: string | null
+          user_id: string
+        }
+        Update: {
+          equipped?: boolean | null
+          id?: string
+          item_id?: string
+          purchased_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_purchases_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "shop_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -272,6 +337,7 @@ export type Database = {
         | "party_announced"
         | "serious"
         | "call_to_action"
+      shop_item_type: "badge" | "theme" | "map_icon"
       vibe_type:
         | "focused"
         | "social"
@@ -417,6 +483,7 @@ export const Constants = {
         "serious",
         "call_to_action",
       ],
+      shop_item_type: ["badge", "theme", "map_icon"],
       vibe_type: [
         "focused",
         "social",
