@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useFriendIds } from '@/hooks/useFriendIds';
+import { useAdmin } from '@/hooks/useAdmin';
 import BottomNav from '@/components/BottomNav';
 import CheckInModal from '@/components/CheckInModal';
 import VibeBar from '@/components/VibeBar';
@@ -15,6 +16,7 @@ import TopSpots from '@/components/TopSpots';
 import LoreDrops from '@/components/LoreDrops';
 import MapPomodoroButton from '@/components/MapPomodoroButton';
 import { useNavigate } from 'react-router-dom';
+import { getStudyRank } from '@/lib/ranks';
 
 const VIBE_EMOJI: Record<string, string> = {
   focused: '📚', social: '☕', silent: '🔇', flow: '🌊',
@@ -43,12 +45,21 @@ function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function formatDuration(startedAt: string): string {
+  const mins = Math.round((Date.now() - new Date(startedAt).getTime()) / 60000);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 export default function MapPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { isAdmin } = useAdmin(user?.id);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const locMarkerRefs = useRef<Map<string, { marker: maplibregl.Marker; badge: HTMLElement; party: HTMLElement; popup: maplibregl.Popup }>>(new Map());
   const friendMarkersRef = useRef<maplibregl.Marker[]>([]);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
@@ -76,7 +87,7 @@ export default function MapPage() {
     });
   }, [user]);
 
-  // Broadcast location + auto-remove check-in if user left
+  // Broadcast location + auto-remove check-in if user left (skip for admin)
   useEffect(() => {
     if (!user || !position || ghostMode) return;
     const updateLocation = async () => {
@@ -89,7 +100,8 @@ export default function MapPage() {
           latitude: position.latitude, longitude: position.longitude,
         }).eq('id', activeCI.id);
 
-        if (activeCI.location_id) {
+        // Auto-remove if too far (skip for admins)
+        if (activeCI.location_id && !isAdmin) {
           const loc = locations.find(l => l.id === activeCI.location_id);
           if (loc) {
             const dist = distanceMeters(position.latitude, position.longitude, loc.latitude, loc.longitude);
@@ -103,7 +115,7 @@ export default function MapPage() {
       }
     };
     updateLocation();
-  }, [position, user, ghostMode, locations]);
+  }, [position, user, ghostMode, locations, isAdmin]);
 
   // Init MapLibre
   useEffect(() => {
@@ -151,7 +163,6 @@ export default function MapPage() {
       if (data) setLocations(data);
     };
     fetch();
-    // Subscribe to location changes (admin adds/removes)
     const channel = supabase
       .channel('locations_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => fetch())
@@ -176,40 +187,68 @@ export default function MapPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Place location markers
+  // Create STABLE location markers (only when locations change)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
+    // Remove old location markers
+    locMarkerRefs.current.forEach(({ marker }) => marker.remove());
+    locMarkerRefs.current.clear();
 
     locations.forEach(loc => {
-      const count = activeCheckIns.filter(ci => ci.location_id === loc.id).length;
-      const hasParty = activeCheckIns.some(ci => ci.location_id === loc.id && ci.vibe === 'party');
-
       const el = document.createElement('div');
+      el.style.width = '30px';
+      el.style.height = '30px';
       el.style.position = 'relative';
       el.style.cursor = 'pointer';
-      el.innerHTML = `
-        <div style="width:24px;height:24px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
-        ${count > 0 ? `<div style="position:absolute;top:-8px;right:-10px;min-width:20px;height:20px;border-radius:10px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid white;padding:0 4px;">${count}</div>` : ''}
-        ${hasParty ? `<div style="position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:16px;animation:float 2s ease-in-out infinite;">🎉</div>` : ''}
-      `;
+
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:24px;height:24px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:3px;left:3px;`;
+      el.appendChild(dot);
+
+      const badge = document.createElement('div');
+      badge.style.cssText = 'position:absolute;top:-6px;right:-8px;min-width:18px;height:18px;border-radius:9px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;border:2px solid white;padding:0 3px;z-index:2;';
+      el.appendChild(badge);
+
+      const partyEl = document.createElement('div');
+      partyEl.style.cssText = 'position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);font-size:14px;display:none;animation:float 2s ease-in-out infinite;';
+      partyEl.textContent = '🎉';
+      el.appendChild(partyEl);
 
       const popup = new maplibregl.Popup({ offset: 16, closeButton: false })
-        .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">${count} studying here</span></div>`);
+        .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">0 studying here</span></div>`);
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([loc.longitude, loc.latitude])
         .setPopup(popup)
         .addTo(map);
 
-      markersRef.current.push(marker);
+      locMarkerRefs.current.set(loc.id, { marker, badge, party: partyEl, popup });
     });
-  }, [locations, activeCheckIns, mapReady]);
+  }, [locations, mapReady]);
 
-  // Place friend check-in avatars
+  // Update location badges + popups (WITHOUT recreating markers)
+  useEffect(() => {
+    locMarkerRefs.current.forEach(({ badge, party, popup }, locId) => {
+      const count = activeCheckIns.filter(ci => ci.location_id === locId).length;
+      const hasParty = activeCheckIns.some(ci => ci.location_id === locId && ci.vibe === 'party');
+      const loc = locations.find(l => l.id === locId);
+
+      if (count > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = String(count);
+      } else {
+        badge.style.display = 'none';
+      }
+
+      party.style.display = hasParty ? 'block' : 'none';
+
+      popup.setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc?.name || ''}</strong><br/><span style="color:#888;">${count} studying here</span></div>`);
+    });
+  }, [activeCheckIns, locations]);
+
+  // Place friend/user check-in avatars on map
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -221,9 +260,9 @@ export default function MapPage() {
       const profile = ci.profiles as any;
       if (ci.user_id === user?.id) return;
       if (profile?.ghost_mode) return;
-      if (!friendIds.includes(ci.user_id)) return;
+      // Admin sees everyone, non-admin sees only friends
+      if (!isAdmin && !friendIds.includes(ci.user_id)) return;
 
-      // Use location coords if no personal lat/lng
       let lng = ci.longitude;
       let lat = ci.latitude;
       if (!lng || !lat) {
@@ -235,20 +274,34 @@ export default function MapPage() {
       const initial = profile?.display_name?.[0] || '?';
       const vibeEmoji = VIBE_EMOJI[ci.vibe] || '';
       const locName = locations.find(l => l.id === ci.location_id)?.name;
+      const duration = formatDuration(ci.started_at);
+      const isFriend = friendIds.includes(ci.user_id);
 
       const el = document.createElement('div');
+      el.style.width = '44px';
+      el.style.height = '44px';
       el.style.position = 'relative';
+      el.style.cursor = 'pointer';
       el.innerHTML = `
-        <div style="width:36px;height:36px;border-radius:50%;background:hsl(100,18%,68%);border:3px solid white;box-shadow:0 2px 12px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:hsl(100,20%,15%);">
+        <div style="width:36px;height:36px;border-radius:50%;background:hsl(100,18%,68%);border:3px solid white;box-shadow:0 2px 12px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:hsl(100,20%,15%);position:absolute;top:4px;left:4px;">
           ${initial}
         </div>
-        <div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;">
+        <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;">
           ${vibeEmoji}
         </div>
       `;
 
-      const popup = new maplibregl.Popup({ offset: 20, closeButton: false })
-        .setHTML(`<div style="font-size:11px;padding:2px 4px;"><strong>${profile?.display_name || 'Friend'}</strong>${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}${ci.study_goal ? `<br/><span style="color:#888;">🎯 ${ci.study_goal}</span>` : ''}</div>`);
+      const popupHtml = `
+        <div style="font-size:11px;padding:4px 6px;min-width:120px;">
+          <strong>${profile?.display_name || 'Student'}</strong>
+          ${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}
+          <br/><span style="color:#888;">⏱️ Studying for ${duration}</span>
+          ${ci.vibe ? `<br/><span style="color:#888;">${vibeEmoji} ${ci.vibe.charAt(0).toUpperCase() + ci.vibe.slice(1)}</span>` : ''}
+          ${ci.study_goal ? `<br/><span style="color:#888;">🎯 ${ci.study_goal}</span>` : ''}
+          ${!isFriend && isAdmin ? '<br/><span style="color:#cc8800;font-size:9px;">👁️ Admin view</span>' : ''}
+        </div>`;
+
+      const popup = new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(popupHtml);
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([lng, lat])
@@ -257,7 +310,7 @@ export default function MapPage() {
 
       friendMarkersRef.current.push(marker);
     });
-  }, [activeCheckIns, friendIds, user?.id, locations, mapReady]);
+  }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin]);
 
   // Show own location
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 interface StudyStats {
   todayMinutes: number;
@@ -70,10 +71,27 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   const stop = async () => {
     if (!user || !sessionId) return;
     setIsRunning(false);
+    const durationSecs = elapsed;
     await supabase.from('study_sessions').update({
       ended_at: new Date().toISOString(),
-      duration_seconds: elapsed,
+      duration_seconds: durationSecs,
     }).eq('id', sessionId);
+
+    // Award study coins: 1 per 15 minutes
+    const coinsEarned = Math.floor(durationSecs / 900);
+    if (coinsEarned > 0) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('study_coins')
+        .eq('user_id', user.id)
+        .single();
+      const current = (profile as any)?.study_coins || 0;
+      await supabase.from('profiles')
+        .update({ study_coins: current + coinsEarned } as any)
+        .eq('user_id', user.id);
+      toast.success(`+${coinsEarned} Study Coin${coinsEarned > 1 ? 's' : ''} earned! 🪙`);
+    }
+
     setSessionId(null);
     fetchStats();
   };

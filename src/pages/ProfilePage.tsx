@@ -3,10 +3,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
-import { LogOut, Ghost, Save } from 'lucide-react';
+import { LogOut, Ghost, Save, ShoppingBag, Coins } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import PomodoroTimer from '@/components/PomodoroTimer';
+import { getStudyRank } from '@/lib/ranks';
 
 const YEAR_OPTIONS = ['Foundation', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'Doctorate'];
 
@@ -21,6 +22,9 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('');
   const [ghostMode, setGhostMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [totalStudyHours, setTotalStudyHours] = useState(0);
+  const [studyCoins, setStudyCoins] = useState(0);
+  const [equippedBadges, setEquippedBadges] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
@@ -37,6 +41,20 @@ export default function ProfilePage() {
         setYear(data.year || '');
         setBio(data.bio || '');
         setGhostMode(data.ghost_mode || false);
+        setStudyCoins((data as any).study_coins || 0);
+      }
+    });
+
+    // Fetch total study hours
+    supabase.from('study_sessions').select('duration_seconds').eq('user_id', user.id).then(({ data }) => {
+      const total = (data || []).reduce((s, r) => s + (r.duration_seconds || 0), 0);
+      setTotalStudyHours(total / 3600);
+    });
+
+    // Fetch equipped badges
+    supabase.from('user_purchases' as any).select('*, shop_items:item_id(name, metadata)').eq('user_id', user.id).eq('equipped', true).then(({ data }: any) => {
+      if (data) {
+        setEquippedBadges(data.map((p: any) => p.shop_items?.metadata?.emoji || '').filter(Boolean));
       }
     });
   }, [user]);
@@ -56,6 +74,8 @@ export default function ProfilePage() {
 
   if (loading || !profile) return null;
 
+  const rank = getStudyRank(totalStudyHours);
+
   return (
     <div className="min-h-screen bg-background pb-28">
       <div className="px-5 pt-safe">
@@ -67,10 +87,48 @@ export default function ProfilePage() {
         </div>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center text-2xl font-bold text-secondary-foreground shadow-soft">
-              {displayName[0] || '?'}
+          {/* Avatar + Rank */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center text-2xl font-bold text-secondary-foreground shadow-soft">
+                {displayName[0] || '?'}
+              </div>
+              {rank && (
+                <div
+                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-soft border-2 border-card"
+                  style={{ backgroundColor: rank.color }}
+                >
+                  {rank.emoji}
+                </div>
+              )}
             </div>
+            {rank && (
+              <p className="text-xs font-semibold mt-2" style={{ color: rank.color }}>
+                {rank.name} Rank • {Math.floor(totalStudyHours)}h studied
+              </p>
+            )}
+            {equippedBadges.length > 0 && (
+              <div className="flex gap-1 mt-1">
+                {equippedBadges.map((b, i) => <span key={i} className="text-lg">{b}</span>)}
+              </div>
+            )}
+          </div>
+
+          {/* Coins + Shop */}
+          <div className="glass-strong rounded-2xl p-4 flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Coins size={20} className="text-primary" />
+              <div>
+                <p className="text-sm font-bold">{studyCoins} Study Coins</p>
+                <p className="text-[10px] text-muted-foreground">Earn 1 coin per 15 min of study</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/shop')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold"
+            >
+              <ShoppingBag size={14} /> Shop
+            </button>
           </div>
 
           <div className="mb-4"><PomodoroTimer /></div>
