@@ -4,9 +4,10 @@ import { useAdmin } from '@/hooks/useAdmin';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
-import { Shield, Trash2, Users, MapPin, Bell, Plus, Ban, Send } from 'lucide-react';
+import { Shield, Trash2, Users, MapPin, Bell, Plus, Ban, Send, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
+import { Switch } from '@/components/ui/switch';
 
 const LORE_CATEGORIES = [
   { value: 'general', label: '📢 General', bg: 'bg-muted' },
@@ -31,6 +32,7 @@ export default function AdminPage() {
   const [loreDrops, setLoreDrops] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [tab, setTab] = useState<'profiles' | 'checkins' | 'lore' | 'locations'>('profiles');
+  const [testingMode, setTestingMode] = useState(false);
 
   // Lore compose
   const [loreMessage, setLoreMessage] = useState('');
@@ -60,6 +62,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     fetchAll();
+    // Fetch testing mode
+    supabase.from('app_settings').select('value').eq('key', 'testing_mode').maybeSingle().then(({ data }) => {
+      if (data) setTestingMode(data.value === 'true');
+    });
   }, [isAdmin]);
 
   const fetchAll = async () => {
@@ -73,6 +79,21 @@ export default function AdminPage() {
     if (c.data) setCheckIns(c.data);
     if (l.data) setLoreDrops(l.data);
     if (loc.data) setLocations(loc.data);
+  };
+
+  const toggleTestingMode = async () => {
+    const newVal = !testingMode;
+    setTestingMode(newVal);
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ value: String(newVal) } as any)
+      .eq('key', 'testing_mode');
+    if (error) {
+      toast.error('Failed to toggle testing mode');
+      setTestingMode(!newVal);
+    } else {
+      toast.success(newVal ? 'Testing mode ON — proximity checks disabled for all users' : 'Testing mode OFF');
+    }
   };
 
   const updateProfile = async (userId: string, field: string, value: string) => {
@@ -135,7 +156,7 @@ export default function AdminPage() {
     });
     if (error) toast.error(error.message);
     else {
-      toast.success('Location added! It will appear on the map automatically.');
+      toast.success('Location added!');
       setNewLocName(''); setNewLocLat(''); setNewLocLng(''); setNewLocAddress('');
       fetchAll();
     }
@@ -165,9 +186,16 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background pb-28">
       <div className="px-5 pt-safe">
-        <div className="pt-6 pb-4 flex items-center gap-2">
-          <Shield size={20} className="text-primary" />
-          <h1 className="text-2xl font-bold">Admin Panel</h1>
+        <div className="pt-6 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield size={20} className="text-primary" />
+            <h1 className="text-2xl font-bold">Admin Panel</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <FlaskConical size={14} className={testingMode ? 'text-primary' : 'text-muted-foreground'} />
+            <span className="text-[10px] font-medium text-muted-foreground">Test</span>
+            <Switch checked={testingMode} onCheckedChange={toggleTestingMode} />
+          </div>
         </div>
 
         <div className="flex gap-2 mb-4 overflow-x-auto">
@@ -320,7 +348,7 @@ export default function AdminPage() {
           <div className="space-y-4">
             <div className="glass-strong rounded-xl p-4 space-y-3">
               <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Add Location</p>
-              <input value={newLocName} onChange={(e) => setNewLocName(e.target.value)} placeholder="Location name (e.g., Western Bank Library)" className="w-full px-3 py-2 rounded-lg bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
+              <input value={newLocName} onChange={(e) => setNewLocName(e.target.value)} placeholder="Location name" className="w-full px-3 py-2 rounded-lg bg-muted text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
               <input value={newLocAddress} onChange={(e) => setNewLocAddress(e.target.value)} placeholder="Address (optional)" className="w-full px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
               <div className="grid grid-cols-3 gap-2">
                 <select value={newLocType} onChange={(e) => setNewLocType(e.target.value)} className="px-3 py-2 rounded-lg bg-muted text-xs">
@@ -332,6 +360,7 @@ export default function AdminPage() {
               <button onClick={addLocation} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1">
                 <Plus size={14} /> Add Location
               </button>
+              <p className="text-[10px] text-muted-foreground">💡 Tip: You can also drop locations directly on the map using the pin button in the top bar.</p>
             </div>
             <div className="space-y-2">
               {locations.map(loc => (

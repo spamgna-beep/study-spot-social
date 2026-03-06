@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { MapPin, Users, Sparkles, ArrowRight, BookOpen, Clock, Shield, Zap } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import PomodoroTimer from '@/components/PomodoroTimer';
+import WeeklyLeaderboard from '@/components/WeeklyLeaderboard';
 
 const features = [
   { icon: MapPin, title: 'Live Campus Map', desc: 'See where friends are studying in real-time with vibe badges and location markers.' },
@@ -79,9 +80,21 @@ export default function Index() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="mb-8"
+            className="mb-6"
           >
             <PomodoroTimer large />
+          </motion.div>
+        )}
+
+        {/* Weekly Leaderboard */}
+        {user && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="mb-8"
+          >
+            <WeeklyLeaderboard />
           </motion.div>
         )}
 
