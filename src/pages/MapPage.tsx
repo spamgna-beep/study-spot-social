@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Plus, MapPin as MapPinIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -16,7 +16,7 @@ import TopSpots from '@/components/TopSpots';
 import LoreDrops from '@/components/LoreDrops';
 import MapPomodoroButton from '@/components/MapPomodoroButton';
 import { useNavigate } from 'react-router-dom';
-import { getStudyRank } from '@/lib/ranks';
+import { toast } from 'sonner';
 
 const VIBE_EMOJI: Record<string, string> = {
   focused: '📚', social: '☕', silent: '🔇', flow: '🌊',
@@ -68,6 +68,8 @@ export default function MapPage() {
   const [ghostMode, setGhostMode] = useState(false);
   const [currentVibe, setCurrentVibe] = useState<string>('');
   const [mapReady, setMapReady] = useState(false);
+  const [testingMode, setTestingMode] = useState(false);
+  const [adminDropMode, setAdminDropMode] = useState(false);
 
   const friendIds = useFriendIds(user?.id);
   const { position } = useGeolocation(!ghostMode);
@@ -76,7 +78,7 @@ export default function MapPage() {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
 
-  // Fetch ghost mode + current vibe
+  // Fetch ghost mode + current vibe + testing mode
   useEffect(() => {
     if (!user) return;
     supabase.from('profiles').select('ghost_mode').eq('user_id', user.id).single().then(({ data }) => {
@@ -85,9 +87,13 @@ export default function MapPage() {
     supabase.from('check_ins').select('vibe').eq('user_id', user.id).eq('is_active', true).maybeSingle().then(({ data }) => {
       if (data) setCurrentVibe(data.vibe);
     });
+    // Fetch testing mode
+    supabase.from('app_settings').select('value').eq('key', 'testing_mode').maybeSingle().then(({ data }) => {
+      if (data) setTestingMode(data.value === 'true');
+    });
   }, [user]);
 
-  // Broadcast location + auto-remove check-in if user left (skip for admin)
+  // Broadcast location + auto-remove check-in if user left
   useEffect(() => {
     if (!user || !position || ghostMode) return;
     const updateLocation = async () => {
@@ -100,8 +106,8 @@ export default function MapPage() {
           latitude: position.latitude, longitude: position.longitude,
         }).eq('id', activeCI.id);
 
-        // Auto-remove if too far (skip for admins)
-        if (activeCI.location_id && !isAdmin) {
+        // Auto-remove if too far (skip if testing mode or admin)
+        if (activeCI.location_id && !isAdmin && !testingMode) {
           const loc = locations.find(l => l.id === activeCI.location_id);
           if (loc) {
             const dist = distanceMeters(position.latitude, position.longitude, loc.latitude, loc.longitude);
@@ -115,7 +121,7 @@ export default function MapPage() {
       }
     };
     updateLocation();
-  }, [position, user, ghostMode, locations, isAdmin]);
+  }, [position, user, ghostMode, locations, isAdmin, testingMode]);
 
   // Init MapLibre
   useEffect(() => {
@@ -152,20 +158,44 @@ export default function MapPage() {
       }
     });
 
+    // Admin drag-drop: click to add location
+    map.on('click', async (e) => {
+      if (!adminDropMode) return;
+      const name = prompt('Enter location name:');
+      if (!name) return;
+      const type = prompt('Enter type (library, cafe, outdoor):', 'library');
+      if (!type || !['library', 'cafe', 'outdoor'].includes(type)) return;
+
+      const { error } = await supabase.from('locations').insert({
+        name, type: type as any,
+        latitude: e.lngLat.lat,
+        longitude: e.lngLat.lng,
+      });
+      if (error) toast.error(error.message);
+      else toast.success(`${name} added!`);
+    });
+
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
+  // Update adminDropMode ref for click handler
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = adminDropMode ? 'crosshair' : '';
+  }, [adminDropMode]);
+
   // Fetch locations
   useEffect(() => {
-    const fetch = async () => {
+    const fetchLocs = async () => {
       const { data } = await supabase.from('locations').select('*');
       if (data) setLocations(data);
     };
-    fetch();
+    fetchLocs();
     const channel = supabase
       .channel('locations_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => fetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => fetchLocs())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -187,24 +217,21 @@ export default function MapPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Create STABLE location markers (only when locations change)
+  // Create STABLE location markers
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // Remove old location markers
     locMarkerRefs.current.forEach(({ marker }) => marker.remove());
     locMarkerRefs.current.clear();
 
     locations.forEach(loc => {
       const el = document.createElement('div');
-      el.style.width = '30px';
-      el.style.height = '30px';
-      el.style.position = 'relative';
-      el.style.cursor = 'pointer';
+      el.style.cssText = 'width:30px;height:30px;position:relative;cursor:pointer;';
 
       const dot = document.createElement('div');
-      dot.style.cssText = `width:24px;height:24px;border-radius:50%;background:${LOCATION_COLORS[loc.type] || '#888'};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:3px;left:3px;`;
+      const color = LOCATION_COLORS[loc.type] || '#888';
+      dot.style.cssText = `width:24px;height:24px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:3px;left:3px;`;
       el.appendChild(dot);
 
       const badge = document.createElement('div');
@@ -212,7 +239,7 @@ export default function MapPage() {
       el.appendChild(badge);
 
       const partyEl = document.createElement('div');
-      partyEl.style.cssText = 'position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);font-size:14px;display:none;animation:float 2s ease-in-out infinite;';
+      partyEl.style.cssText = 'position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:16px;display:none;';
       partyEl.textContent = '🎉';
       el.appendChild(partyEl);
 
@@ -228,7 +255,7 @@ export default function MapPage() {
     });
   }, [locations, mapReady]);
 
-  // Update location badges + popups (WITHOUT recreating markers)
+  // Update location badges + popups WITHOUT recreating markers
   useEffect(() => {
     locMarkerRefs.current.forEach(({ badge, party, popup }, locId) => {
       const count = activeCheckIns.filter(ci => ci.location_id === locId).length;
@@ -263,25 +290,32 @@ export default function MapPage() {
       // Admin sees everyone, non-admin sees only friends
       if (!isAdmin && !friendIds.includes(ci.user_id)) return;
 
-      let lng = ci.longitude;
-      let lat = ci.latitude;
+      // Get location coordinates - use the location's fixed position
+      const loc = locations.find(l => l.id === ci.location_id);
+      let lng = loc?.longitude;
+      let lat = loc?.latitude;
+      
+      // Fall back to check-in coordinates if no location
       if (!lng || !lat) {
-        const loc = locations.find(l => l.id === ci.location_id);
-        if (loc) { lng = loc.longitude; lat = loc.latitude; }
-        else return;
+        lng = ci.longitude;
+        lat = ci.latitude;
       }
+      if (!lng || !lat) return;
+
+      // Offset slightly so avatars don't stack exactly on location dot
+      const offset = (friendMarkersRef.current.length % 5) * 0.0001;
+      lng += offset;
+      lat += offset * 0.5;
 
       const initial = profile?.display_name?.[0] || '?';
       const vibeEmoji = VIBE_EMOJI[ci.vibe] || '';
-      const locName = locations.find(l => l.id === ci.location_id)?.name;
+      const vibeName = ci.vibe ? ci.vibe.charAt(0).toUpperCase() + ci.vibe.slice(1) : '';
+      const locName = loc?.name;
       const duration = formatDuration(ci.started_at);
       const isFriend = friendIds.includes(ci.user_id);
 
       const el = document.createElement('div');
-      el.style.width = '44px';
-      el.style.height = '44px';
-      el.style.position = 'relative';
-      el.style.cursor = 'pointer';
+      el.style.cssText = 'width:44px;height:44px;position:relative;cursor:pointer;';
       el.innerHTML = `
         <div style="width:36px;height:36px;border-radius:50%;background:hsl(100,18%,68%);border:3px solid white;box-shadow:0 2px 12px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:hsl(100,20%,15%);position:absolute;top:4px;left:4px;">
           ${initial}
@@ -292,11 +326,11 @@ export default function MapPage() {
       `;
 
       const popupHtml = `
-        <div style="font-size:11px;padding:4px 6px;min-width:120px;">
+        <div style="font-size:11px;padding:4px 6px;min-width:130px;">
           <strong>${profile?.display_name || 'Student'}</strong>
           ${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}
-          <br/><span style="color:#888;">⏱️ Studying for ${duration}</span>
-          ${ci.vibe ? `<br/><span style="color:#888;">${vibeEmoji} ${ci.vibe.charAt(0).toUpperCase() + ci.vibe.slice(1)}</span>` : ''}
+          <br/><span style="color:#888;">⏱️ ${duration}</span>
+          ${ci.vibe ? `<br/><span style="color:#888;">${vibeEmoji} ${vibeName}</span>` : ''}
           ${ci.study_goal ? `<br/><span style="color:#888;">🎯 ${ci.study_goal}</span>` : ''}
           ${!isFriend && isAdmin ? '<br/><span style="color:#cc8800;font-size:9px;">👁️ Admin view</span>' : ''}
         </div>`;
@@ -312,6 +346,58 @@ export default function MapPage() {
     });
   }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin]);
 
+  // Heatmap layer for all locations
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // Build heatmap data from check-ins
+    const features = activeCheckIns
+      .filter(ci => ci.location_id)
+      .map(ci => {
+        const loc = locations.find(l => l.id === ci.location_id);
+        if (!loc) return null;
+        return {
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
+          properties: { weight: 1 },
+        };
+      })
+      .filter(Boolean);
+
+    const sourceId = 'heatmap-source';
+    const layerId = 'heatmap-layer';
+
+    if (map.getSource(sourceId)) {
+      (map.getSource(sourceId) as any).setData({ type: 'FeatureCollection', features });
+    } else {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'heatmap',
+        source: sourceId,
+        paint: {
+          'heatmap-weight': 1,
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 11, 1, 15, 3],
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 11, 15, 15, 30],
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(0,0,0,0)',
+            0.2, 'rgba(168,183,154,0.3)',
+            0.4, 'rgba(168,183,154,0.5)',
+            0.6, 'rgba(200,180,100,0.6)',
+            0.8, 'rgba(230,190,60,0.7)',
+            1, 'rgba(230,170,30,0.8)',
+          ],
+          'heatmap-opacity': 0.6,
+        },
+      });
+    }
+  }, [activeCheckIns, locations, mapReady]);
+
   // Show own location
   useEffect(() => {
     const map = mapRef.current;
@@ -321,12 +407,7 @@ export default function MapPage() {
       userMarkerRef.current.setLngLat([position.longitude, position.latitude]);
     } else {
       const el = document.createElement('div');
-      el.style.width = '18px';
-      el.style.height = '18px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = 'hsl(48, 94%, 56%)';
-      el.style.border = '4px solid white';
-      el.style.boxShadow = '0 0 12px hsla(48, 94%, 56%, 0.4)';
+      el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:hsl(48,94%,56%);border:4px solid white;box-shadow:0 0 12px hsla(48,94%,56%,0.4);';
 
       userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([position.longitude, position.latitude])
@@ -369,6 +450,18 @@ export default function MapPage() {
           <div className="flex items-center gap-2">
             <MapPomodoroButton />
             <LoreDrops locations={locations} />
+            {isAdmin && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setAdminDropMode(!adminDropMode)}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold ${
+                  adminDropMode ? 'bg-primary text-primary-foreground' : 'glass-strong'
+                }`}
+                title="Drop location on map"
+              >
+                <MapPinIcon size={18} />
+              </motion.button>
+            )}
             <div className="glass rounded-xl px-3 py-1.5 text-xs font-medium flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-outdoor animate-pulse" />
               Live
@@ -379,7 +472,7 @@ export default function MapPage() {
 
       <TopSpots locations={locations} checkIns={activeCheckIns} />
 
-      {/* Quick Vibe - vertical stack above FAB */}
+      {/* Quick Vibe */}
       <div className="absolute bottom-40 left-4 z-30 w-28">
         <QuickVibe ghostMode={ghostMode} onGhostToggle={toggleGhostMode} currentVibe={currentVibe} />
       </div>
