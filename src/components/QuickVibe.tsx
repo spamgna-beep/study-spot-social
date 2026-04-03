@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -21,6 +22,7 @@ interface QuickVibeProps {
 export default function QuickVibe({ ghostMode, onGhostToggle, currentVibe }: QuickVibeProps) {
   const { user } = useAuth();
   const [activeVibe, setActiveVibe] = useState(currentVibe || '');
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (currentVibe) setActiveVibe(currentVibe);
@@ -42,41 +44,75 @@ export default function QuickVibe({ ghostMode, onGhostToggle, currentVibe }: Qui
     } else {
       await supabase.from('check_ins').insert({ user_id: user.id, vibe: vibe as any });
     }
+
+    setExpanded(false);
     toast.success(`Vibe set to ${vibe}!`);
   };
 
+  const activeLabel = vibes.find((v) => v.value === activeVibe)?.label || 'Choose vibe';
+
   return (
-    <div className="flex flex-col gap-1.5">
-      {vibes.map((v, i) => (
-        <motion.button
-          key={v.value}
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: i * 0.03, type: 'spring', damping: 14 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => handleVibeSelect(v.value)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-medium w-full ${
-            activeVibe === v.value
-              ? 'bg-primary text-primary-foreground shadow-glow-primary'
-              : 'glass-strong text-foreground'
-          }`}
+    <div className="flex flex-col gap-2">
+      {expanded && (
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.96 }}
+          transition={{ type: 'spring', damping: 18, stiffness: 260 }}
+          className="glass-strong rounded-2xl p-2 shadow-soft"
         >
-          <span className="text-base">{v.emoji}</span>
-          <span>{v.label}</span>
-        </motion.button>
-      ))}
+          <div className="flex flex-col gap-1.5">
+            {vibes.map((v, i) => (
+              <motion.button
+                key={v.value}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleVibeSelect(v.value)}
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
+                  activeVibe === v.value
+                    ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                    : 'bg-background/70 text-foreground'
+                }`}
+              >
+                <span className="text-base">{v.emoji}</span>
+                <span>{v.label}</span>
+              </motion.button>
+            ))}
+
+            <motion.button
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => {
+                onGhostToggle();
+                setExpanded(false);
+              }}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
+                ghostMode ? 'bg-foreground text-background' : 'bg-background/70 text-foreground'
+              }`}
+            >
+              <span className="text-base">👻</span>
+              <span>Ghost</span>
+            </motion.button>
+          </div>
+        </motion.div>
+      )}
+
       <motion.button
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.15, type: 'spring', damping: 14 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onGhostToggle}
-        className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-medium w-full ${
-          ghostMode ? 'bg-foreground text-background' : 'glass-strong text-foreground'
-        }`}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => setExpanded((value) => !value)}
+        className="glass-strong flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left shadow-soft"
       >
-        <span className="text-base">👻</span>
-        <span>Ghost</span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Quick vibe</p>
+          <p className="truncate text-sm font-semibold text-foreground">{activeLabel}</p>
+        </div>
+        <div className="ml-3 flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-foreground">
+          {expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </div>
       </motion.button>
     </div>
   );
