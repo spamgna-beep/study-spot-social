@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import PomodoroTimer from '@/components/PomodoroTimer';
 import { getStudyRank } from '@/lib/ranks';
+import { UNIVERSITIES } from '@/lib/universities';
 
 const YEAR_OPTIONS = ['Foundation', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'Doctorate'];
 
@@ -21,6 +22,7 @@ export default function ProfilePage() {
   const [year, setYear] = useState('');
   const [bio, setBio] = useState('');
   const [ghostMode, setGhostMode] = useState(false);
+  const [university, setUniversity] = useState('');
   const [saving, setSaving] = useState(false);
   const [totalStudyHours, setTotalStudyHours] = useState(0);
   const [studyCoins, setStudyCoins] = useState(0);
@@ -42,6 +44,7 @@ export default function ProfilePage() {
         setBio(data.bio || '');
         setGhostMode(data.ghost_mode || false);
         setStudyCoins((data as any).study_coins || 0);
+        setUniversity((data as any).university || '');
       }
     });
 
@@ -66,6 +69,7 @@ export default function ProfilePage() {
       display_name: displayName, username: username || null,
       major: major || null, year: year || null,
       bio: bio || null, ghost_mode: ghostMode,
+      university: university || null,
     }).eq('user_id', user.id);
     if (error) toast.error(error.message);
     else toast.success('Profile updated!');
@@ -154,6 +158,13 @@ export default function ProfilePage() {
                   {YEAR_OPTIONS.map(y => (<option key={y} value={y}>{y}</option>))}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">University</label>
+              <select value={university} onChange={(e) => setUniversity(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none">
+                <option value="">Select university</option>
+                {UNIVERSITIES.map((u) => (<option key={u.name} value={u.name}>{u.name}</option>))}
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Bio</label>

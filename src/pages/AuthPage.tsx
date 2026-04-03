@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { motion } from 'framer-motion';
 import { BookOpen, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { UNIVERSITIES } from '@/lib/universities';
 
 export default function AuthPage() {
   const { signIn, signUp } = useAuth();
@@ -10,6 +11,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [university, setUniversity] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,7 +19,8 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (isSignUp) {
-        await signUp(email, password, displayName);
+        if (!university) { toast.error('Please select your university'); setLoading(false); return; }
+        await signUp(email, password, displayName, university);
         toast.success('Check your email to confirm your account!');
       } else {
         await signIn(email, password);
@@ -55,14 +58,27 @@ export default function AuthPage() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {isSignUp && (
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name"
-                className="w-full px-4 py-3 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                required
-              />
+              <>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Display name"
+                  className="w-full px-4 py-3 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  required
+                />
+                <select
+                  value={university}
+                  onChange={(e) => setUniversity(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-muted text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
+                  required
+                >
+                  <option value="" disabled>Select your university</option>
+                  {UNIVERSITIES.map((u) => (
+                    <option key={u.name} value={u.name}>{u.name}</option>
+                  ))}
+                </select>
+              </>
             )}
             <input
               type="email"

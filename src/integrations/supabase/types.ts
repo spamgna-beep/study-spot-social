@@ -118,6 +118,7 @@ export type Database = {
           longitude: number
           name: string
           type: Database["public"]["Enums"]["location_type"]
+          university: string | null
         }
         Insert: {
           address?: string | null
@@ -127,6 +128,7 @@ export type Database = {
           longitude: number
           name: string
           type: Database["public"]["Enums"]["location_type"]
+          university?: string | null
         }
         Update: {
           address?: string | null
@@ -136,6 +138,7 @@ export type Database = {
           longitude?: number
           name?: string
           type?: Database["public"]["Enums"]["location_type"]
+          university?: string | null
         }
         Relationships: []
       }
@@ -191,6 +194,7 @@ export type Database = {
           id: string
           major: string | null
           study_coins: number
+          university: string | null
           updated_at: string
           user_id: string
           username: string | null
@@ -206,6 +210,7 @@ export type Database = {
           id?: string
           major?: string | null
           study_coins?: number
+          university?: string | null
           updated_at?: string
           user_id: string
           username?: string | null
@@ -221,6 +226,7 @@ export type Database = {
           id?: string
           major?: string | null
           study_coins?: number
+          university?: string | null
           updated_at?: string
           user_id?: string
           username?: string | null
