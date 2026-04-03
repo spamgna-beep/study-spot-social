@@ -18,6 +18,8 @@ import MapPomodoroButton from '@/components/MapPomodoroButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { findUniversity } from '@/lib/universities';
+import uniSheffieldLogo from '@/assets/uni-sheffield-logo.png';
 
 const VIBE_EMOJI: Record<string, string> = {
   focused: '📚', social: '☕', silent: '🔇', flow: '🌊',
@@ -35,7 +37,6 @@ const LOCATION_COLORS: Record<string, string> = {
   library: '#A8B79A', cafe: '#A68B6B', outdoor: '#7DB37D',
 };
 
-const SHEFFIELD_CENTER: [number, number] = [-1.4886, 53.3811];
 const PROXIMITY_METERS = 200;
 
 function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -73,6 +74,7 @@ export default function MapPage() {
   const [adminDropMode, setAdminDropMode] = useState(false);
   const [hasDarkModeTheme, setHasDarkModeTheme] = useState(false);
   const [timerTick, setTimerTick] = useState(0);
+  const [userUni, setUserUni] = useState<string | null>(null);
 
   const friendIds = useFriendIds(user?.id);
   const { position } = useGeolocation(!ghostMode);
@@ -150,8 +152,11 @@ export default function MapPage() {
   useEffect(() => {
     if (!user) return;
 
-    supabase.from('profiles').select('ghost_mode').eq('user_id', user.id).single().then(({ data }) => {
-      if (data) setGhostMode(data.ghost_mode);
+    supabase.from('profiles').select('ghost_mode, university').eq('user_id', user.id).single().then(({ data }: any) => {
+      if (data) {
+        setGhostMode(data.ghost_mode);
+        setUserUni(data.university || null);
+      }
     });
 
     fetchActiveCheckIns();
@@ -207,10 +212,14 @@ export default function MapPage() {
   // Init MapLibre
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
+
+    const uni = findUniversity(userUni);
+    const center: [number, number] = uni ? uni.center : [-1.4886, 53.3811];
+
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: SHEFFIELD_CENTER,
+      center,
       zoom: 15, pitch: 45, bearing: -10,
     });
 
@@ -251,14 +260,19 @@ export default function MapPage() {
         name, type: type as any,
         latitude: e.lngLat.lat,
         longitude: e.lngLat.lng,
+        university: userUni,
       });
       if (error) toast.error(error.message);
       else toast.success(`${name} added!`);
     });
 
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      setMapReady(false);
+    };
+  }, [userUni]);
 
   // Update adminDropMode ref for click handler
   useEffect(() => {
@@ -311,13 +325,22 @@ export default function MapPage() {
     locMarkerRefs.current.clear();
 
     locations.forEach(loc => {
-      const el = document.createElement('div');
-      el.style.cssText = 'width:30px;height:30px;position:relative;cursor:pointer;';
+      const isOtherUni = userUni && loc.university && loc.university !== userUni;
 
-      const dot = document.createElement('div');
-      const color = LOCATION_COLORS[loc.type] || '#888';
-      dot.style.cssText = `width:24px;height:24px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:3px;left:3px;`;
-      el.appendChild(dot);
+      const el = document.createElement('div');
+      el.style.cssText = 'width:32px;height:32px;position:relative;cursor:pointer;';
+
+      if (isOtherUni) {
+        const dot = document.createElement('div');
+        const color = LOCATION_COLORS[loc.type] || '#888';
+        dot.style.cssText = `width:24px;height:24px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:4px;left:4px;opacity:0.7;`;
+        el.appendChild(dot);
+      } else {
+        const img = document.createElement('img');
+        img.src = uniSheffieldLogo;
+        img.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;background:white;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);position:absolute;top:2px;left:2px;';
+        el.appendChild(img);
+      }
 
       const badge = document.createElement('div');
       badge.style.cssText = 'position:absolute;top:-6px;right:-8px;min-width:18px;height:18px;border-radius:9px;background:hsl(48,94%,56%);color:hsl(40,30%,12%);font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center;border:2px solid white;padding:0 3px;z-index:2;';
@@ -329,7 +352,7 @@ export default function MapPage() {
       el.appendChild(partyEl);
 
       const popup = new maplibregl.Popup({ offset: 16, closeButton: false })
-        .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">0 studying here</span></div>`);
+        .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong>${isOtherUni ? `<br/><span style="color:#b07000;font-size:10px;">📌 ${loc.university}</span>` : ''}<br/><span style="color:#888;">0 studying here</span></div>`);
 
       const marker = new maplibregl.Marker({
         element: el,
@@ -373,6 +396,7 @@ export default function MapPage() {
       popup.setHTML(`
         <div style="font-size:12px;padding:4px 6px;min-width:150px;">
           <strong>${loc?.name || ''}</strong><br/>
+          ${loc?.university && loc.university !== userUni ? `<span style="color:#b07000;font-size:10px;">📌 ${loc.university}</span><br/>` : ''}
           <span style="color:#888;">${count} studying here</span>
           ${visibleNames.length ? `<br/><span style="color:#888;">👥 ${visibleNames.join(', ')}${visiblePeople.length > visibleNames.length ? '…' : ''}</span>` : ''}
         </div>
@@ -439,6 +463,7 @@ export default function MapPage() {
         <div style="font-size:11px;padding:4px 6px;min-width:130px;">
           <strong>${profile?.display_name || 'Student'}</strong>
           <br/><span style="color:#888;">🟢 Online now</span>
+          ${loc?.university && loc.university !== userUni ? `<br/><span style="color:#b07000;font-size:10px;">📌 ${loc.university}</span>` : ''}
           ${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}
           <br/><span style="color:#888;">⏱️ ${duration}</span>
           ${ci.vibe ? `<br/><span style="color:#888;">${vibeEmoji} ${vibeName}</span>` : ''}

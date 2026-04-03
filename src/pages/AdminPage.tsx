@@ -8,6 +8,7 @@ import { Shield, Trash2, Users, MapPin, Bell, Plus, Ban, Send, FlaskConical } fr
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import { Switch } from '@/components/ui/switch';
+import { UNIVERSITIES } from '@/lib/universities';
 
 const LORE_CATEGORIES = [
   { value: 'general', label: '📢 General', bg: 'bg-muted' },
@@ -46,6 +47,7 @@ export default function AdminPage() {
   const [newLocLat, setNewLocLat] = useState('');
   const [newLocLng, setNewLocLng] = useState('');
   const [newLocAddress, setNewLocAddress] = useState('');
+  const [newLocUni, setNewLocUni] = useState('University of Sheffield');
 
   // Ban modal
   const [banUserId, setBanUserId] = useState<string | null>(null);
@@ -153,6 +155,7 @@ export default function AdminPage() {
       latitude: parseFloat(newLocLat),
       longitude: parseFloat(newLocLng),
       address: newLocAddress.trim() || null,
+      university: newLocUni || null,
     });
     if (error) toast.error(error.message);
     else {
@@ -357,6 +360,9 @@ export default function AdminPage() {
                 <input value={newLocLat} onChange={(e) => setNewLocLat(e.target.value)} placeholder="Latitude" type="number" step="any" className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
                 <input value={newLocLng} onChange={(e) => setNewLocLng(e.target.value)} placeholder="Longitude" type="number" step="any" className="px-3 py-2 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
               </div>
+              <select value={newLocUni} onChange={(e) => setNewLocUni(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted text-xs">
+                {UNIVERSITIES.map((u) => (<option key={u.name} value={u.name}>{u.name}</option>))}
+              </select>
               <button onClick={addLocation} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1">
                 <Plus size={14} /> Add Location
               </button>
@@ -368,6 +374,7 @@ export default function AdminPage() {
                   <div>
                     <p className="text-sm font-medium">{loc.name}</p>
                     <p className="text-[10px] text-muted-foreground">{loc.type} • {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}{loc.address ? ` • ${loc.address}` : ''}</p>
+                    {loc.university && <p className="text-[10px] text-primary font-medium">{loc.university}</p>}
                   </div>
                   <button onClick={() => deleteLocation(loc.id)} className="p-2 rounded-lg bg-destructive/10 hover:bg-destructive/20">
                     <Trash2 size={14} className="text-destructive" />
