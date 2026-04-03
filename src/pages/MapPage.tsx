@@ -15,6 +15,7 @@ import QuickVibe from '@/components/QuickVibe';
 import TopSpots from '@/components/TopSpots';
 import LoreDrops from '@/components/LoreDrops';
 import MapPomodoroButton from '@/components/MapPomodoroButton';
+import ThemeToggle from '@/components/ThemeToggle';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -70,28 +71,108 @@ export default function MapPage() {
   const [mapReady, setMapReady] = useState(false);
   const [testingMode, setTestingMode] = useState(false);
   const [adminDropMode, setAdminDropMode] = useState(false);
+  const [hasDarkModeTheme, setHasDarkModeTheme] = useState(false);
+  const [timerTick, setTimerTick] = useState(0);
 
   const friendIds = useFriendIds(user?.id);
   const { position } = useGeolocation(!ghostMode);
+
+  const fetchTestingMode = useCallback(async () => {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'testing_mode').maybeSingle();
+    setTestingMode(data?.value === 'true');
+  }, []);
+
+  const fetchLocations = useCallback(async () => {
+    const { data } = await supabase.from('locations').select('*');
+    if (data) setLocations(data);
+  }, []);
+
+  const fetchActiveCheckIns = useCallback(async () => {
+    const { data: checkIns } = await supabase
+      .from('check_ins')
+      .select('*')
+      .eq('is_active', true);
+
+    if (!checkIns?.length) {
+      setActiveCheckIns([]);
+      setCurrentVibe('');
+      return;
+    }
+
+    const userIds = [...new Set(checkIns.map((checkIn) => checkIn.user_id))];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, display_name, avatar_url, ghost_mode, username')
+      .in('user_id', userIds);
+
+    const profileMap = new Map((profiles || []).map((profile) => [profile.user_id, profile]));
+    const mergedCheckIns = checkIns.map((checkIn) => ({
+      ...checkIn,
+      profile: profileMap.get(checkIn.user_id) || null,
+    }));
+
+    setActiveCheckIns(mergedCheckIns);
+
+    const ownCheckIn = mergedCheckIns.find((checkIn) => checkIn.user_id === user?.id);
+    setCurrentVibe(ownCheckIn?.vibe || '');
+  }, [user?.id]);
+
+  const fetchDarkModeOwnership = useCallback(async () => {
+    if (!user) {
+      setHasDarkModeTheme(false);
+      return;
+    }
+
+    const { data }: any = await supabase
+      .from('user_purchases' as any)
+      .select('shop_items:item_id(name, metadata)')
+      .eq('user_id', user.id);
+
+    const unlockedDarkMode = (data || []).some((purchase: any) => {
+      const name = purchase.shop_items?.name || '';
+      const theme = purchase.shop_items?.metadata?.theme || '';
+      return theme === 'dark' || /dark/i.test(name);
+    });
+
+    setHasDarkModeTheme(unlockedDarkMode);
+  }, [user]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setTimerTick((value) => value + 1), 30000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   // Fetch ghost mode + current vibe + testing mode
   useEffect(() => {
     if (!user) return;
+
     supabase.from('profiles').select('ghost_mode').eq('user_id', user.id).single().then(({ data }) => {
       if (data) setGhostMode(data.ghost_mode);
     });
-    supabase.from('check_ins').select('vibe').eq('user_id', user.id).eq('is_active', true).maybeSingle().then(({ data }) => {
-      if (data) setCurrentVibe(data.vibe);
-    });
-    // Fetch testing mode
-    supabase.from('app_settings').select('value').eq('key', 'testing_mode').maybeSingle().then(({ data }) => {
-      if (data) setTestingMode(data.value === 'true');
-    });
-  }, [user]);
+
+    fetchActiveCheckIns();
+    fetchDarkModeOwnership();
+  }, [user, fetchActiveCheckIns, fetchDarkModeOwnership]);
+
+  useEffect(() => {
+    fetchTestingMode();
+
+    const channel = supabase
+      .channel('app_settings_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, fetchTestingMode)
+      .subscribe();
+
+    const interval = window.setInterval(fetchTestingMode, 12000);
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchTestingMode]);
 
   // Broadcast location + auto-remove check-in if user left
   useEffect(() => {
@@ -188,34 +269,38 @@ export default function MapPage() {
 
   // Fetch locations
   useEffect(() => {
-    const fetchLocs = async () => {
-      const { data } = await supabase.from('locations').select('*');
-      if (data) setLocations(data);
-    };
-    fetchLocs();
+    fetchLocations();
+
     const channel = supabase
       .channel('locations_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => fetchLocs())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, fetchLocations)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+
+    const interval = window.setInterval(fetchLocations, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLocations]);
 
   // Fetch check-ins realtime
   useEffect(() => {
-    const fetchCheckIns = async () => {
-      const { data } = await supabase
-        .from('check_ins')
-        .select('*, profiles:user_id(display_name, avatar_url, ghost_mode)')
-        .eq('is_active', true);
-      if (data) setActiveCheckIns(data);
-    };
-    fetchCheckIns();
+    fetchActiveCheckIns();
+
     const channel = supabase
       .channel('check_ins_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, () => fetchCheckIns())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'check_ins' }, fetchActiveCheckIns)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchActiveCheckIns)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+
+    const interval = window.setInterval(fetchActiveCheckIns, 8000);
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchActiveCheckIns]);
 
   // Create STABLE location markers
   useEffect(() => {
@@ -246,7 +331,12 @@ export default function MapPage() {
       const popup = new maplibregl.Popup({ offset: 16, closeButton: false })
         .setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc.name}</strong><br/><span style="color:#888;">0 studying here</span></div>`);
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: 'center',
+        pitchAlignment: 'map',
+        rotationAlignment: 'map',
+      })
         .setLngLat([loc.longitude, loc.latitude])
         .setPopup(popup)
         .addTo(map);
@@ -261,6 +351,15 @@ export default function MapPage() {
       const count = activeCheckIns.filter(ci => ci.location_id === locId).length;
       const hasParty = activeCheckIns.some(ci => ci.location_id === locId && ci.vibe === 'party');
       const loc = locations.find(l => l.id === locId);
+      const visiblePeople = activeCheckIns.filter((checkIn) => {
+        if (checkIn.location_id !== locId) return false;
+        if (checkIn.user_id === user?.id) return true;
+        if (isAdmin) return true;
+        return friendIds.includes(checkIn.user_id);
+      });
+      const visibleNames = visiblePeople
+        .map((checkIn) => (checkIn.profile as any)?.display_name || 'Student')
+        .slice(0, 3);
 
       if (count > 0) {
         badge.style.display = 'flex';
@@ -271,9 +370,15 @@ export default function MapPage() {
 
       party.style.display = hasParty ? 'block' : 'none';
 
-      popup.setHTML(`<div style="font-size:12px;padding:4px 6px;"><strong>${loc?.name || ''}</strong><br/><span style="color:#888;">${count} studying here</span></div>`);
+      popup.setHTML(`
+        <div style="font-size:12px;padding:4px 6px;min-width:150px;">
+          <strong>${loc?.name || ''}</strong><br/>
+          <span style="color:#888;">${count} studying here</span>
+          ${visibleNames.length ? `<br/><span style="color:#888;">👥 ${visibleNames.join(', ')}${visiblePeople.length > visibleNames.length ? '…' : ''}</span>` : ''}
+        </div>
+      `);
     });
-  }, [activeCheckIns, locations]);
+  }, [activeCheckIns, locations, friendIds, isAdmin, user?.id]);
 
   // Place friend/user check-in avatars on map
   useEffect(() => {
@@ -284,7 +389,7 @@ export default function MapPage() {
     friendMarkersRef.current = [];
 
     activeCheckIns.forEach(ci => {
-      const profile = ci.profiles as any;
+      const profile = ci.profile as any;
       if (ci.user_id === user?.id) return;
       if (profile?.ghost_mode) return;
       // Admin sees everyone, non-admin sees only friends
@@ -302,10 +407,14 @@ export default function MapPage() {
       }
       if (!lng || !lat) return;
 
-      // Offset slightly so avatars don't stack exactly on location dot
-      const offset = (friendMarkersRef.current.length % 5) * 0.0001;
-      lng += offset;
-      lat += offset * 0.5;
+      const markerOffsets: Array<[number, number]> = [
+        [0, -28],
+        [18, -10],
+        [-18, -10],
+        [18, 12],
+        [-18, 12],
+      ];
+      const markerOffset = markerOffsets[friendMarkersRef.current.length % markerOffsets.length];
 
       const initial = profile?.display_name?.[0] || '?';
       const vibeEmoji = VIBE_EMOJI[ci.vibe] || '';
@@ -323,11 +432,13 @@ export default function MapPage() {
         <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:9px;">
           ${vibeEmoji}
         </div>
+        <div style="position:absolute;right:2px;bottom:2px;width:10px;height:10px;border-radius:999px;background:hsl(140, 25%, 60%);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.16);"></div>
       `;
 
       const popupHtml = `
         <div style="font-size:11px;padding:4px 6px;min-width:130px;">
           <strong>${profile?.display_name || 'Student'}</strong>
+          <br/><span style="color:#888;">🟢 Online now</span>
           ${locName ? `<br/><span style="color:#888;">📍 ${locName}</span>` : ''}
           <br/><span style="color:#888;">⏱️ ${duration}</span>
           ${ci.vibe ? `<br/><span style="color:#888;">${vibeEmoji} ${vibeName}</span>` : ''}
@@ -337,14 +448,20 @@ export default function MapPage() {
 
       const popup = new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(popupHtml);
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: 'center',
+        offset: markerOffset,
+        pitchAlignment: 'map',
+        rotationAlignment: 'map',
+      })
         .setLngLat([lng, lat])
         .setPopup(popup)
         .addTo(map);
 
       friendMarkersRef.current.push(marker);
     });
-  }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin]);
+  }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin, timerTick]);
 
   // Heatmap layer for all locations
   useEffect(() => {
@@ -449,6 +566,7 @@ export default function MapPage() {
           </div>
           <div className="flex items-center gap-2">
             <MapPomodoroButton />
+            {hasDarkModeTheme && <ThemeToggle />}
             <LoreDrops locations={locations} />
             {isAdmin && (
               <motion.button

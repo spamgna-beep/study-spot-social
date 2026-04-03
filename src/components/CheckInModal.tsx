@@ -130,24 +130,25 @@ export default function CheckInModal({ open, onClose, locations }: CheckInModalP
               </div>
             </div>
 
-            <div className="mb-8">
+            <div className="mb-2">
               <p className="text-sm font-medium text-muted-foreground mb-3">Study goal (optional)</p>
-              <input
-                type="text"
-                value={studyGoal}
-                onChange={(e) => setStudyGoal(e.target.value)}
-                placeholder="e.g., Prepping for Calc Exam"
-                className="w-full px-4 py-3 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-              />
+              <div className="flex items-end gap-3">
+                <input
+                  type="text"
+                  value={studyGoal}
+                  onChange={(e) => setStudyGoal(e.target.value)}
+                  placeholder="e.g., Prepping for Calc Exam"
+                  className="flex-1 px-4 py-3 rounded-xl bg-muted text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all min-w-0"
+                />
+                <button
+                  onClick={handleCheckIn}
+                  disabled={submitting}
+                  className="shrink-0 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-glow-primary transition-all hover:opacity-90 disabled:opacity-50"
+                >
+                  {submitting ? 'Checking…' : 'Check In ✨'}
+                </button>
+              </div>
             </div>
-
-            <button
-              onClick={handleCheckIn}
-              disabled={submitting}
-              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-glow-primary hover:opacity-90 transition-all disabled:opacity-50"
-            >
-              {submitting ? 'Checking in...' : 'Check In ✨'}
-            </button>
           </motion.div>
         </>
       )}
