@@ -186,12 +186,14 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          ban_reason: string | null
           banned_until: string | null
           bio: string | null
           created_at: string
           display_name: string | null
           ghost_mode: boolean
           id: string
+          last_seen_at: string | null
           major: string | null
           study_coins: number
           university: string | null
@@ -202,12 +204,14 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          ban_reason?: string | null
           banned_until?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
           ghost_mode?: boolean
           id?: string
+          last_seen_at?: string | null
           major?: string | null
           study_coins?: number
           university?: string | null
@@ -218,12 +222,14 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          ban_reason?: string | null
           banned_until?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
           ghost_mode?: boolean
           id?: string
+          last_seen_at?: string | null
           major?: string | null
           study_coins?: number
           university?: string | null
@@ -338,6 +344,33 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      weekly_leaderboard_rewards: {
+        Row: {
+          coins_awarded: number
+          created_at: string
+          id: string
+          rank: number
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          coins_awarded: number
+          created_at?: string
+          id?: string
+          rank: number
+          user_id: string
+          week_start: string
+        }
+        Update: {
+          coins_awarded?: number
+          created_at?: string
+          id?: string
+          rank?: number
+          user_id?: string
+          week_start?: string
         }
         Relationships: []
       }
