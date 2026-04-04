@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback, Re
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { clampStudySeconds } from '@/lib/study';
 
 interface StudyStats {
   todayMinutes: number;
@@ -40,7 +41,7 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
       supabase.from('study_sessions').select('duration_seconds').eq('user_id', user.id).gte('created_at', weekStart),
     ]);
 
-    const sumSeconds = (data: any[] | null) => (data || []).reduce((s, r) => s + (r.duration_seconds || 0), 0);
+    const sumSeconds = (data: any[] | null) => (data || []).reduce((s, r) => s + clampStudySeconds(r.duration_seconds), 0);
     setStats({
       todayMinutes: Math.round(sumSeconds(todayRes.data) / 60),
       weekMinutes: Math.round(sumSeconds(weekRes.data) / 60),
@@ -60,6 +61,29 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
 
   const start = async () => {
     if (!user) return;
+
+    const { data: unfinishedSessions } = await supabase
+      .from('study_sessions')
+      .select('id, started_at')
+      .eq('user_id', user.id)
+      .is('ended_at', null);
+
+    if (unfinishedSessions?.length) {
+      const nowIso = new Date().toISOString();
+      await Promise.all(
+        unfinishedSessions.map((session) => {
+          const durationSeconds = clampStudySeconds(
+            Math.floor((Date.now() - new Date(session.started_at).getTime()) / 1000),
+          );
+
+          return supabase
+            .from('study_sessions')
+            .update({ ended_at: nowIso, duration_seconds: durationSeconds })
+            .eq('id', session.id);
+        }),
+      );
+    }
+
     const { data } = await supabase.from('study_sessions').insert({ user_id: user.id }).select('id').single();
     if (data) {
       setSessionId(data.id);
@@ -71,7 +95,7 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   const stop = async () => {
     if (!user || !sessionId) return;
     setIsRunning(false);
-    const durationSecs = elapsed;
+    const durationSecs = clampStudySeconds(elapsed);
     await supabase.from('study_sessions').update({
       ended_at: new Date().toISOString(),
       duration_seconds: durationSecs,

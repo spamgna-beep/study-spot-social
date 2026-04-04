@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import FriendProfileModal from '@/components/FriendProfileModal';
 import { getStudyRank } from '@/lib/ranks';
+import { clampStudySeconds } from '@/lib/study';
 
 interface FriendProfile {
   id: string;
@@ -85,7 +86,7 @@ export default function FriendsPage() {
       
       const statsMap: Record<string, number> = {};
       (sessions || []).forEach(s => {
-        statsMap[s.user_id] = (statsMap[s.user_id] || 0) + s.duration_seconds;
+        statsMap[s.user_id] = (statsMap[s.user_id] || 0) + clampStudySeconds(s.duration_seconds);
       });
       setFriendStudyStats(statsMap);
     }

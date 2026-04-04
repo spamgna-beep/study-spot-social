@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PomodoroProvider } from "@/contexts/PomodoroContext";
+import BanGuard from "@/components/BanGuard";
 import Index from "./pages/Index";
 import AuthPage from "./pages/AuthPage";
 import MapPage from "./pages/MapPage";
@@ -26,6 +27,7 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <PomodoroProvider>
+              <BanGuard />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<AuthPage />} />
