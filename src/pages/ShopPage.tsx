@@ -111,6 +111,7 @@ export default function ShopPage() {
           {filteredItems.map((item: any) => {
             const owned = ownedItemIds.has(item.id);
             const purchase = purchases.find((p: any) => p.item_id === item.id);
+            const itemEmoji = item.metadata?.emoji ?? (item.metadata?.effect === 'fireworks' ? '🎆' : item.metadata?.theme ? '🎨' : '✨');
             return (
               <motion.div
                 key={item.id}
@@ -118,7 +119,7 @@ export default function ShopPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="glass-strong rounded-2xl p-4 flex flex-col items-center text-center"
               >
-                <span className="text-3xl mb-2">{item.metadata?.emoji || item.metadata?.effect === 'fireworks' ? '🎆' : item.metadata?.theme ? '🎨' : '✨'}</span>
+                <span className="text-3xl mb-2">{itemEmoji}</span>
                 <p className="text-sm font-semibold mb-1">{item.name}</p>
                 <p className="text-[10px] text-muted-foreground mb-3">{item.description}</p>
                 {owned ? (

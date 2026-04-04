@@ -9,6 +9,7 @@ import BottomNav from '@/components/BottomNav';
 import PomodoroTimer from '@/components/PomodoroTimer';
 import { getStudyRank } from '@/lib/ranks';
 import { UNIVERSITIES } from '@/lib/universities';
+import { clampStudySeconds } from '@/lib/study';
 
 const YEAR_OPTIONS = ['Foundation', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'Doctorate'];
 
@@ -50,7 +51,7 @@ export default function ProfilePage() {
 
     // Fetch total study hours
     supabase.from('study_sessions').select('duration_seconds').eq('user_id', user.id).then(({ data }) => {
-      const total = (data || []).reduce((s, r) => s + (r.duration_seconds || 0), 0);
+      const total = (data || []).reduce((s, r) => s + clampStudySeconds(r.duration_seconds), 0);
       setTotalStudyHours(total / 3600);
     });
 

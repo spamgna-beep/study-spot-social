@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const checkoutPresence = useCallback(async (reason: 'signout' | 'pagehide' | 'beforeunload' = 'signout') => {
+    if (!user) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+
+    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/presence-manager`, {
+      method: 'POST',
+      keepalive: reason !== 'signout',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action: 'checkout', reason }),
+    }).catch(() => undefined);
+  }, [user]);
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -35,6 +52,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const heartbeat = async () => {
+      await supabase
+        .from('profiles')
+        .update({ last_seen_at: new Date().toISOString() } as any)
+        .eq('user_id', user.id);
+    };
+
+    heartbeat();
+
+    const interval = window.setInterval(heartbeat, 30000);
+    const handlePageHide = () => { void checkoutPresence('pagehide'); };
+    const handleBeforeUnload = () => { void checkoutPresence('beforeunload'); };
+
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user, checkoutPresence]);
 
   const signUp = async (email: string, password: string, displayName: string, university: string) => {
     const { error } = await supabase.auth.signUp({
@@ -55,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    await checkoutPresence('signout');
     await supabase.auth.signOut();
     navigate('/');
   };

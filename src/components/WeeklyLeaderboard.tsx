@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, Medal, Award } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { clampStudySeconds, getWeekStartDate } from '@/lib/study';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -15,8 +16,15 @@ export default function WeeklyLeaderboard() {
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
-      const now = new Date();
-      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leaderboard-rewards`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }).catch(() => undefined);
+      }
+
+      const weekStart = getWeekStartDate().toISOString();
 
       const { data: sessions } = await supabase
         .from('study_sessions')
@@ -32,7 +40,7 @@ export default function WeeklyLeaderboard() {
       // Aggregate by user
       const userTotals: Record<string, number> = {};
       sessions.forEach(s => {
-        userTotals[s.user_id] = (userTotals[s.user_id] || 0) + (s.duration_seconds || 0);
+        userTotals[s.user_id] = (userTotals[s.user_id] || 0) + clampStudySeconds(s.duration_seconds);
       });
 
       const userIds = Object.keys(userTotals);
