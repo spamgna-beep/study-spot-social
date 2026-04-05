@@ -4,11 +4,12 @@ import { useAdmin } from '@/hooks/useAdmin';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
-import { Shield, Trash2, Users, MapPin, Bell, Plus, Ban, Send, FlaskConical } from 'lucide-react';
+import { Shield, Trash2, Users, MapPin, Bell, Plus, Ban, Send, FlaskConical, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import { Switch } from '@/components/ui/switch';
 import { UNIVERSITIES } from '@/lib/universities';
+import { toLocalDateTimeInputValue } from '@/lib/study';
 
 const LORE_CATEGORIES = [
   { value: 'general', label: '📢 General', bg: 'bg-muted' },
@@ -51,7 +52,11 @@ export default function AdminPage() {
 
   // Ban modal
   const [banUserId, setBanUserId] = useState<string | null>(null);
-  const [banDays, setBanDays] = useState('1');
+  const [banReason, setBanReason] = useState('');
+  const [banUntil, setBanUntil] = useState('');
+
+  // Delete confirm
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
@@ -64,7 +69,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     fetchAll();
-    // Fetch testing mode
     supabase.from('app_settings').select('value').eq('key', 'testing_mode').maybeSingle().then(({ data }) => {
       if (data) setTestingMode(data.value === 'true');
     });
@@ -104,18 +108,48 @@ export default function AdminPage() {
     else { toast.success('Updated!'); fetchAll(); }
   };
 
+  const callModeration = async (action: string, target_user_id: string, extra: Record<string, any> = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) { toast.error('Not authenticated'); return false; }
+
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-moderation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, target_user_id, ...extra }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error || 'Action failed');
+      return false;
+    }
+    return true;
+  };
+
   const banUser = async (userId: string) => {
-    const days = parseInt(banDays) || 1;
-    const bannedUntil = new Date(Date.now() + days * 86400000).toISOString();
-    const { error } = await supabase.from('profiles').update({ banned_until: bannedUntil } as any).eq('user_id', userId);
-    if (error) toast.error(error.message);
-    else { toast.success(`User banned for ${days} day(s)`); setBanUserId(null); fetchAll(); }
+    if (!banUntil) { toast.error('Set a ban expiry date'); return; }
+    const bannedUntil = new Date(banUntil).toISOString();
+    const ok = await callModeration('ban', userId, { banned_until: bannedUntil, ban_reason: banReason || 'No reason provided' });
+    if (ok) {
+      toast.success('User banned');
+      setBanUserId(null);
+      setBanReason('');
+      setBanUntil('');
+      fetchAll();
+    }
   };
 
   const unbanUser = async (userId: string) => {
-    await supabase.from('profiles').update({ banned_until: null } as any).eq('user_id', userId);
-    toast.success('User unbanned');
-    fetchAll();
+    const ok = await callModeration('unban', userId);
+    if (ok) { toast.success('User unbanned'); fetchAll(); }
+  };
+
+  const deleteUser = async (userId: string) => {
+    const ok = await callModeration('delete', userId);
+    if (ok) { toast.success('User deleted'); setDeleteUserId(null); fetchAll(); }
   };
 
   const deleteLoreDrop = async (id: string) => {
@@ -231,7 +265,16 @@ export default function AdminPage() {
                       <div>
                         <span className="text-sm font-semibold">{p.display_name}</span>
                         {p.username && <span className="text-[10px] text-muted-foreground ml-1">@{p.username}</span>}
-                        {isBanned && <span className="text-[10px] text-destructive ml-2 font-bold">BANNED until {new Date(p.banned_until).toLocaleDateString()}</span>}
+                        {p.university && <span className="text-[10px] text-muted-foreground ml-1">• {p.university}</span>}
+                        {isBanned && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <AlertTriangle size={10} className="text-destructive" />
+                            <span className="text-[10px] text-destructive font-bold">
+                              BANNED until {new Date(p.banned_until).toLocaleString()}
+                            </span>
+                            {p.ban_reason && <span className="text-[10px] text-muted-foreground">— {p.ban_reason}</span>}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -244,28 +287,110 @@ export default function AdminPage() {
                           <Ban size={12} className="text-destructive" />
                         </button>
                       )}
+                      <button
+                        onClick={() => setDeleteUserId(deleteUserId === p.user_id ? null : p.user_id)}
+                        className="p-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20"
+                      >
+                        <Trash2 size={12} className="text-destructive" />
+                      </button>
                     </div>
                   </div>
+
+                  {/* Ban form */}
                   {banUserId === p.user_id && (
-                    <div className="flex gap-2 items-center p-2 rounded-lg bg-destructive/5">
-                      <input type="number" value={banDays} onChange={e => setBanDays(e.target.value)} min="1" className="w-16 px-2 py-1 rounded-lg bg-muted text-xs" placeholder="Days" />
-                      <span className="text-[10px] text-muted-foreground">days</span>
-                      <button onClick={() => banUser(p.user_id)} className="px-3 py-1 rounded-lg bg-destructive text-destructive-foreground text-[10px] font-bold">Ban</button>
-                      <button onClick={() => setBanUserId(null)} className="text-[10px] text-muted-foreground">Cancel</button>
-                    </div>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-3 rounded-lg bg-destructive/5 space-y-2"
+                    >
+                      <p className="text-[10px] font-semibold text-destructive uppercase">Ban {p.display_name}</p>
+                      <input
+                        value={banReason}
+                        onChange={e => setBanReason(e.target.value)}
+                        placeholder="Reason for ban..."
+                        className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-destructive/30"
+                      />
+                      <input
+                        type="datetime-local"
+                        value={banUntil}
+                        onChange={e => setBanUntil(e.target.value)}
+                        min={toLocalDateTimeInputValue(new Date())}
+                        className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-destructive/30"
+                      />
+                      <div className="flex gap-2">
+                        {[1, 3, 7, 30].map(d => (
+                          <button
+                            key={d}
+                            onClick={() => setBanUntil(toLocalDateTimeInputValue(new Date(Date.now() + d * 86400000)))}
+                            className="px-2 py-1 rounded-lg bg-muted text-[10px] font-medium hover:bg-muted/80"
+                          >
+                            {d}d
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => banUser(p.user_id)} className="px-4 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-[10px] font-bold">
+                          Confirm Ban
+                        </button>
+                        <button onClick={() => { setBanUserId(null); setBanReason(''); setBanUntil(''); }} className="text-[10px] text-muted-foreground px-2">
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
                   )}
+
+                  {/* Delete confirm */}
+                  {deleteUserId === p.user_id && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-3 rounded-lg bg-destructive/10 space-y-2"
+                    >
+                      <p className="text-xs text-destructive font-semibold">⚠️ Permanently delete {p.display_name}?</p>
+                      <p className="text-[10px] text-muted-foreground">This removes all their data, sessions, friends, and auth account. Cannot be undone.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => deleteUser(p.user_id)} className="px-4 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-[10px] font-bold">
+                          Yes, Delete
+                        </button>
+                        <button onClick={() => setDeleteUserId(null)} className="text-[10px] text-muted-foreground px-2">
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Editable fields */}
                   {['display_name', 'username', 'bio', 'major', 'year'].map(field => (
                     <div key={field}>
                       <label className="text-[10px] uppercase text-muted-foreground font-semibold">{field.replace('_', ' ')}</label>
-                      <input
-                        defaultValue={p[field] || ''}
-                        onBlur={(e) => {
-                          if (e.target.value !== (p[field] || '')) updateProfile(p.user_id, field, e.target.value);
-                        }}
-                        className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
-                      />
+                      {field === 'year' ? (
+                        <select
+                          defaultValue={p[field] || ''}
+                          onChange={(e) => updateProfile(p.user_id, field, e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        >
+                          <option value="">Not set</option>
+                          {['Foundation', '1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'Doctorate'].map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          defaultValue={p[field] || ''}
+                          onBlur={(e) => {
+                            if (e.target.value !== (p[field] || '')) updateProfile(p.user_id, field, e.target.value);
+                          }}
+                          className="w-full px-3 py-1.5 rounded-lg bg-muted text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        />
+                      )}
                     </div>
                   ))}
+
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-1">
+                    <span>👻 Ghost: {p.ghost_mode ? 'ON' : 'OFF'}</span>
+                    <span>• 🪙 {p.study_coins ?? 0} coins</span>
+                    {p.last_seen_at && <span>• Last seen: {new Date(p.last_seen_at).toLocaleString()}</span>}
+                  </div>
                 </div>
               );
             })}
@@ -283,6 +408,7 @@ export default function AdminPage() {
                 <div>
                   <p className="text-sm font-medium">{(ci.profiles as any)?.display_name || 'Unknown'}</p>
                   <p className="text-xs text-muted-foreground">Vibe: {ci.vibe} {ci.study_goal && `• ${ci.study_goal}`}</p>
+                  <p className="text-[10px] text-muted-foreground">Since {new Date(ci.started_at).toLocaleTimeString()}</p>
                 </div>
                 <button onClick={() => endCheckIn(ci.id)} className="p-2 rounded-lg bg-destructive/10 hover:bg-destructive/20">
                   <Trash2 size={14} className="text-destructive" />
