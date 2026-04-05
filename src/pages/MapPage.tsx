@@ -104,7 +104,7 @@ export default function MapPage() {
     const userIds = [...new Set(checkIns.map((checkIn) => checkIn.user_id))];
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('user_id, display_name, avatar_url, ghost_mode, username')
+      .select('user_id, display_name, avatar_url, ghost_mode, username, last_seen_at')
       .in('user_id', userIds);
 
     const profileMap = new Map((profiles || []).map((profile) => [profile.user_id, profile]));
@@ -357,8 +357,8 @@ export default function MapPage() {
       const marker = new maplibregl.Marker({
         element: el,
         anchor: 'center',
-        pitchAlignment: 'map',
-        rotationAlignment: 'map',
+        pitchAlignment: 'viewport',
+        rotationAlignment: 'viewport',
       })
         .setLngLat([loc.longitude, loc.latitude])
         .setPopup(popup)
@@ -419,6 +419,13 @@ export default function MapPage() {
       // Admin sees everyone, non-admin sees only friends
       if (!isAdmin && !friendIds.includes(ci.user_id)) return;
 
+      // Filter out stale users (not seen in last 5 minutes) unless testing
+      const lastSeen = profile?.last_seen_at;
+      if (!testingMode && lastSeen) {
+        const seenAgo = Date.now() - new Date(lastSeen).getTime();
+        if (seenAgo > 5 * 60 * 1000) return;
+      }
+
       // Get location coordinates - use the location's fixed position
       const loc = locations.find(l => l.id === ci.location_id);
       let lng = loc?.longitude;
@@ -477,8 +484,8 @@ export default function MapPage() {
         element: el,
         anchor: 'center',
         offset: markerOffset,
-        pitchAlignment: 'map',
-        rotationAlignment: 'map',
+        pitchAlignment: 'viewport',
+        rotationAlignment: 'viewport',
       })
         .setLngLat([lng, lat])
         .setPopup(popup)
