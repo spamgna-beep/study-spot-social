@@ -493,7 +493,7 @@ export default function MapPage() {
 
       friendMarkersRef.current.push(marker);
     });
-  }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin, timerTick]);
+  }, [activeCheckIns, friendIds, user?.id, locations, mapReady, isAdmin, timerTick, testingMode]);
 
   // Heatmap layer for all locations
   useEffect(() => {
